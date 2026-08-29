@@ -1,8 +1,10 @@
-// 偏航 Web App - app.js
-// 步骤3：基于Leaflet地图，调用Overpass API获取周边POI，绘制Marker并弹窗显示名称
+// 偏航 Web App - 前端主逻辑
 
 (function () {
     'use strict';
+
+    // AI 后端地址：构建时由 build.js 注入 window.__API_BASE__（SAME_ORIGIN 时为空字符串表示同源）
+    var AI_BASE = 'http://localhost:8001';
 
     // ===== 时间选择：自选时间轮盘 =====
     var selectedMinutes = null;
@@ -106,13 +108,13 @@
         console.log('[' + source + (accuracy ? ' ±' + Math.round(accuracy) + 'm' : '') + '] 已定位用户位置: (' + lat.toFixed(4) + ',' + lng.toFixed(4) + ')');
     }
 
-    // IP 定位：免费接口 ip-api.com（无需key，返回经纬度）；失败则回退默认(上海中心)
+    // IP 定位：优先走后端同源代理 /api/ip（无 CORS/混合内容问题）；失败则回退公开接口
     // 返回 Promise，resolve 位置或 null
     function ipLocate() {
         var urls = [
-            'https://ip-api.com/json/?lang=zh-CN&fields=status,lat,lon,city',
+            AI_BASE + '/api/ip',
             'https://ipapi.co/json/',
-            'https://ipinfo.io/json'
+            'https://ipwho.is/'
         ];
         var idx = 0;
         function tryNext() {
@@ -125,7 +127,8 @@
                 return r.json();
             }).then(function (d) {
                 clearTimeout(timer);
-                var lat = parseFloat(d.lat), lon = parseFloat(d.lon || d.lng);
+                if (d.error) throw new Error(d.error);
+                var lat = parseFloat(d.lat), lon = parseFloat(d.lon || d.lng || d.longitude);
                 if (isNaN(lat) || isNaN(lon)) throw new Error('无坐标');
                 return { lat: lat, lng: lon, city: d.city || '' };
             }).catch(function (err) {
@@ -606,8 +609,7 @@
     }
 
 
-    // ===== AI候选路线（后端Mock，步骤7；密钥保管在后端，前端不含任何大模型密钥） =====
-    var AI_BASE = 'http://localhost:8001';
+    // ===== AI 路线推荐（调用后端 /api/* 接口） =====
     var lastCandidates = [];
     var lastPref = null;  // 最近一次偏好解析结果，影响打分
     var backendMode = '未知'; // 后端模式：Real(deepseek-chat) 或 Mock(无密钥)

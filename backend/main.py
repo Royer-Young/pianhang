@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""偏航后端服务（步骤7 · 真实大模型模式 · FastAPI）
+"""偏航后端服务（FastAPI）
 
-密钥仅保管在后端，通过 .env 配置，绝不下发前端。
+API 密钥仅存储于后端环境变量，不向客户端暴露。
 """
 import json
 import os
@@ -23,7 +23,7 @@ LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.openai-next.com/v1")
 LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
 
-MOCK_MODE = not LLM_API_KEY  # 无密钥时自动回退 Mock 模式
+MOCK_MODE = not LLM_API_KEY  # 未配置密钥时启用模拟模式
 
 if not MOCK_MODE:
     llm_client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
@@ -178,7 +178,7 @@ def ai_get_intro(name: str, ptype: str) -> dict:
         return {"text": f"{name}是一处{ptype or '地点'}，适合在偏航途中稍作停留、慢慢感受周边氛围。", "llm_error": err_msg}
 
 
-# ---------- Mock 实现（无密钥时自动回退） ----------
+# ---------- 模拟模式实现（未配置密钥时回退） ----------
 
 def mock_parse_pref(user_text: str, minutes: Optional[int]) -> dict:
     """模拟：解析用户自由文本 → 结构化参数"""
@@ -279,8 +279,25 @@ def root():
     return {
         "service": "偏航后端",
         "mode": "Mock(无密钥)" if MOCK_MODE else f"Real({LLM_MODEL})",
-        "endpoints": ["POST /api/parse_pref", "POST /api/get_reason", "POST /api/get_intro"]
+        "endpoints": ["POST /api/parse_pref", "POST /api/get_reason", "POST /api/get_intro", "GET /api/ip"]
     }
+
+
+@app.get("/api/ip")
+def ip_locate():
+    """IP 定位代理：由后端请求 ip-api.com，前端无需处理 CORS/混合内容。"""
+    import urllib.request
+    import urllib.error
+    url = "http://ip-api.com/json/?lang=zh-CN&fields=status,lat,lon,city"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "pianhang/1.0"})
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if data.get("status") == "success":
+                return {"lat": data.get("lat"), "lon": data.get("lon"), "city": data.get("city", "")}
+    except Exception as e:
+        return {"error": str(e)}
+    return {"error": "定位失败"}
 
 
 # ---------- 静态前端（同源部署） ----------
