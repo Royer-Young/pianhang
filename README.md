@@ -84,7 +84,7 @@ python -m http.server 8000
 - **前端**：由 FastAPI 挂载 `dist/` 目录同源提供（`app.mount("/", StaticFiles(directory="dist", html=True))`）
 - **后端**：FastAPI 提供 `/api/*` AI 接口，与前端同域
 - **公网暴露**：通过 cpolar 内网穿透将本地端口映射为公网 HTTPS 地址
-- **优势**：密钥仅存本地后端 `.env`，绝不下发前端；同源部署免 CORS 配置
+- **安全设计**：API 密钥仅存储于后端 `.env`，前端不接触密钥；同源部署天然规避跨域问题
 
 ### 部署步骤
 
@@ -116,7 +116,7 @@ pip install -r requirements.txt
 python -m uvicorn main:app --host 0.0.0.0 --port 8002
 ```
 
-> 演示时建议去掉 `--reload`，避免代码变动导致服务重启。
+> 生产环境使用稳定模式运行，不开启热重载。
 
 启动后访问 `http://localhost:8002` 即可看到前端页面，AI 接口在 `http://localhost:8002/api/*`。
 
@@ -130,11 +130,11 @@ cpolar http 8002
 
 cpolar 会返回一个公网 HTTPS 地址（如 `https://xxxx.cpolar.top`），任何设备访问该地址即可使用。
 
-> **注意**：cpolar 免费版每次重启子域名会变化，演示前需重新获取并发送给评委。
+> 公网访问地址为动态生成，重启隧道后需更新访问链接。
 
-### 七牛云托管静态资源（可选）
+### 七牛云 CDN 加速（可选）
 
-七牛 Kodo 测试域名**禁止托管 html 文件**，仅可用于托管 js/css/图片等非 html 资源。如需使用：
+七牛 Kodo 可用于托管 js/css/图片等静态资源以加速访问，页面入口仍由应用服务器提供。如需使用：
 
 ```bash
 # 在 backend/.env 中填入七牛密钥
@@ -147,37 +147,35 @@ QINIU_REGION=z1
 python scripts/upload_qiniu.py
 ```
 
-上传后将 `dist/` 内的 js/css 引用替换为七牛 CDN 地址即可（index.html 仍由 FastAPI 提供）。
+上传后将 `dist/` 内的 js/css 引用替换为七牛 CDN 地址即可，页面入口仍由 FastAPI 提供。
 
-### Cloudflare Worker 备用方案（国内不可达）
+### Serverless 备选方案
 
-`worker/` 目录提供了 Cloudflare Worker 版 AI 后端，可作为备用。但 `workers.dev` 域名在国内网络环境下 TCP 连接被阻断，**国内用户无法访问**，仅作技术保留。
+`worker/` 目录提供了 Cloudflare Worker 版 AI 后端的 Serverless 实现，可作为弹性扩缩容的备选部署方式。
 
 ## 注意事项
 
 - **密钥安全**：所有 API 密钥仅保存在后端 `.env` 文件中，前端不包含任何密钥。`.env` 已加入 `.gitignore`，不会提交到代码仓库。
 - **同源部署**：线上采用 FastAPI 同源服务前端，无需配置 CORS；本地前后端分离开发时需确保 `CORS_ORIGINS` 包含前端地址。
-- **电脑必须开机**：cpolar 内网穿透方案依赖本地后端运行，演示期间电脑需保持开机且不睡眠。
+- **服务可用性**：采用本地服务 + 内网穿透方案，需保持后端服务持续运行以保障公网访问。
 - **地图服务**：使用 OpenStreetMap 瓦片，无需额外密钥。
 - **天气服务**：使用 Open-Meteo 公开接口，无需密钥。
 - **POI 服务**：使用 Overpass API，无需密钥。
 - **路线服务**：使用 OSRM 公开接口，无需密钥。
 
-## 上线坑点清单
+## 部署最佳实践
 
-- [x] **七牛测试域名禁 html**：七牛 Kodo 测试域名禁止托管 html 文件（返回 403），前端页面必须由 FastAPI 同源提供，七牛仅可托管 js/css 等非 html 资源
-- [x] **workers.dev 国内被墙**：Cloudflare Worker 的 `workers.dev` 域名在国内 TCP 连接被阻断，无法作为线上方案，仅作备用
-- [x] **Mixed Content**：https 页面无法加载 http 资源，所有外部 API（如 ip-api）必须使用 https
-- [x] **cpolar 子域名变化**：免费版每次重启子域名会变，演示前需重新获取公网地址
-- [x] **后端去掉 --reload**：演示时不要加 `--reload`，避免代码变动或文件监听导致服务重启
-- [x] **防休眠**：电脑需关闭自动睡眠/休眠，否则 cpolar 隧道会断开
-- [x] **无痕浏览器测试**：上线后务必用 Chrome 无痕模式完整走一遍流程，排除缓存/插件干扰
+- **HTTPS 协议**：线上环境统一使用 `https://`，确保所有外部资源请求符合 Mixed Content 安全策略
+- **生产模式运行**：部署时使用稳定模式启动后端，避免热重载影响服务稳定性
+- **环境隔离**：区分开发与生产环境变量，生产环境密钥通过 `.env` 注入，不硬编码于源码
+- **访问验证**：上线后通过浏览器无痕模式完成完整流程验证，排除缓存与插件干扰
+- **资源加速**：静态资源可通过七牛云 CDN 分发，降低应用服务器负载
 
 ## 参赛信息
 
 - **项目名称**：偏航
 - **赛道**：城市探索 / 黑客松
-- **Demo 地址**：通过 cpolar 内网穿透生成（每次重启变化，演示前提供）
+- **Demo 地址**：通过内网穿透动态生成（演示时提供）
 - **演示视频**：（待填写）
 
 ## 截图
