@@ -55,6 +55,8 @@ pip install -r requirements.txt
 python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
+> 若 8001 端口被占用，可改用其他端口（如 8002），构建前端时通过 `VITE_API_BASE_URL=http://localhost:8002 npm run build` 指定。
+
 ### 5. 构建前端
 
 ```bash
@@ -75,58 +77,107 @@ python -m http.server 8000
 
 ## 线上部署
 
-### 前端：Cloudflare Pages
+本项目采用 **FastAPI 同源服务 + cpolar 内网穿透** 方案，前端页面与 AI 接口同域部署，无需配置跨域。
 
-1. 将代码推送到 GitHub 仓库
-2. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/) → Pages → 创建项目 → 连接 Git 仓库
-3. 构建设置：
-   - **构建命令**：`npm run build`
-   - **构建输出目录**：`dist`
-   - **环境变量**（在 Cloudflare Pages → Settings → Environment variables 中设置）：
-     - `VITE_API_BASE_URL` = 你的后端 API 地址（如 `https://pianhang-api.onrender.com`）
-4. 保存并部署，等待几分钟即可获得 `*.pages.dev` 域名
+### 方案说明
 
-### 后端：推荐 Render / Railway / Fly.io
+- **前端**：由 FastAPI 挂载 `dist/` 目录同源提供（`app.mount("/", StaticFiles(directory="dist", html=True))`）
+- **后端**：FastAPI 提供 `/api/*` AI 接口，与前端同域
+- **公网暴露**：通过 cpolar 内网穿透将本地端口映射为公网 HTTPS 地址
+- **优势**：密钥仅存本地后端 `.env`，绝不下发前端；同源部署免 CORS 配置
 
-本项目后端为 Python FastAPI，需要部署到支持 Python 的 PaaS 平台：
+### 部署步骤
 
-**以 Render 为例：**
-1. 在 Render 创建新 Web Service，连接 GitHub 仓库
-2. 运行时选择 `Python 3`
-3. 构建命令：`pip install -r backend/requirements.txt`
-4. 启动命令：`uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
-5. 在 Render 环境变量中设置：
-   - `LLM_API_KEY` = 你的 DeepSeek API Key
-   - `LLM_BASE_URL` = `https://api.openai-next.com/v1`
-   - `LLM_MODEL` = `deepseek-v4-flash`
-   - `CORS_ORIGINS` = 你的 Cloudflare Pages 域名（如 `https://pianhang.pages.dev`）
+#### 1. 构建前端（同源模式）
 
-部署后，将后端 URL 填入 Cloudflare Pages 的 `VITE_API_BASE_URL` 环境变量，重新触发一次部署即可。
+```bash
+# SAME_ORIGIN 表示页面与 AI 接口同域，无需跨域
+VITE_API_BASE_URL=SAME_ORIGIN npm run build
+```
+
+> Windows PowerShell 写法：`$env:VITE_API_BASE_URL="SAME_ORIGIN"; npm run build`
+
+#### 2. 配置后端环境变量
+
+编辑 `backend/.env`，填入：
+
+```env
+LLM_API_KEY=你的DeepSeek密钥
+LLM_BASE_URL=https://api.openai-next.com/v1
+LLM_MODEL=deepseek-v4-flash
+CORS_ORIGINS=*
+```
+
+#### 3. 启动后端（同源服务前端）
+
+```bash
+cd backend
+pip install -r requirements.txt
+python -m uvicorn main:app --host 0.0.0.0 --port 8002
+```
+
+> 演示时建议去掉 `--reload`，避免代码变动导致服务重启。
+
+启动后访问 `http://localhost:8002` 即可看到前端页面，AI 接口在 `http://localhost:8002/api/*`。
+
+#### 4. cpolar 内网穿透暴露公网
+
+下载安装 [cpolar](https://www.cpolar.com/)，然后：
+
+```bash
+cpolar http 8002
+```
+
+cpolar 会返回一个公网 HTTPS 地址（如 `https://xxxx.cpolar.top`），任何设备访问该地址即可使用。
+
+> **注意**：cpolar 免费版每次重启子域名会变化，演示前需重新获取并发送给评委。
+
+### 七牛云托管静态资源（可选）
+
+七牛 Kodo 测试域名**禁止托管 html 文件**，仅可用于托管 js/css/图片等非 html 资源。如需使用：
+
+```bash
+# 在 backend/.env 中填入七牛密钥
+QINIU_ACCESS_KEY=你的AK
+QINIU_SECRET_KEY=你的SK
+QINIU_BUCKET=pianhang-web
+QINIU_REGION=z1
+
+# 运行上传脚本
+python scripts/upload_qiniu.py
+```
+
+上传后将 `dist/` 内的 js/css 引用替换为七牛 CDN 地址即可（index.html 仍由 FastAPI 提供）。
+
+### Cloudflare Worker 备用方案（国内不可达）
+
+`worker/` 目录提供了 Cloudflare Worker 版 AI 后端，可作为备用。但 `workers.dev` 域名在国内网络环境下 TCP 连接被阻断，**国内用户无法访问**，仅作技术保留。
 
 ## 注意事项
 
 - **密钥安全**：所有 API 密钥仅保存在后端 `.env` 文件中，前端不包含任何密钥。`.env` 已加入 `.gitignore`，不会提交到代码仓库。
-- **CORS**：后端已配置跨域，线上部署时请确保 `CORS_ORIGINS` 包含前端域名。
-- **地图服务**：使用高德地图瓦片，无需额外密钥。
+- **同源部署**：线上采用 FastAPI 同源服务前端，无需配置 CORS；本地前后端分离开发时需确保 `CORS_ORIGINS` 包含前端地址。
+- **电脑必须开机**：cpolar 内网穿透方案依赖本地后端运行，演示期间电脑需保持开机且不睡眠。
+- **地图服务**：使用 OpenStreetMap 瓦片，无需额外密钥。
 - **天气服务**：使用 Open-Meteo 公开接口，无需密钥。
 - **POI 服务**：使用 Overpass API，无需密钥。
 - **路线服务**：使用 OSRM 公开接口，无需密钥。
 
 ## 上线坑点清单
 
-- [ ] **CORS 跨域**：确保后端 `CORS_ORIGINS` 包含前端域名，否则浏览器会拦截 API 请求
-- [ ] **环境变量大小写**：Cloudflare Pages / Render 等平台环境变量名区分大小写，请严格对照文档填写
-- [ ] **Linux 路径大小写**：如部署到 Linux 服务器，注意 `backend/main.py` 与 `Backend/main.py` 是不同路径
-- [ ] **构建输出目录**：Cloudflare Pages 的"构建输出目录"必须填 `dist`，否则会 404
-- [ ] **API 地址协议**：线上必须使用 `https://`，否则会被浏览器 Mixed Content 策略拦截
-- [ ] **后端端口**：Render 等平台使用 `$PORT` 环境变量，不要硬编码 `8001`
-- [ ] **无痕浏览器测试**：上线后务必用 Chrome 无痕模式完整走一遍流程，排除缓存/插件干扰
+- [x] **七牛测试域名禁 html**：七牛 Kodo 测试域名禁止托管 html 文件（返回 403），前端页面必须由 FastAPI 同源提供，七牛仅可托管 js/css 等非 html 资源
+- [x] **workers.dev 国内被墙**：Cloudflare Worker 的 `workers.dev` 域名在国内 TCP 连接被阻断，无法作为线上方案，仅作备用
+- [x] **Mixed Content**：https 页面无法加载 http 资源，所有外部 API（如 ip-api）必须使用 https
+- [x] **cpolar 子域名变化**：免费版每次重启子域名会变，演示前需重新获取公网地址
+- [x] **后端去掉 --reload**：演示时不要加 `--reload`，避免代码变动或文件监听导致服务重启
+- [x] **防休眠**：电脑需关闭自动睡眠/休眠，否则 cpolar 隧道会断开
+- [x] **无痕浏览器测试**：上线后务必用 Chrome 无痕模式完整走一遍流程，排除缓存/插件干扰
 
 ## 参赛信息
 
 - **项目名称**：偏航
 - **赛道**：城市探索 / 黑客松
-- **Demo 地址**：（待填写）
+- **Demo 地址**：通过 cpolar 内网穿透生成（每次重启变化，演示前提供）
 - **演示视频**：（待填写）
 
 ## 截图
