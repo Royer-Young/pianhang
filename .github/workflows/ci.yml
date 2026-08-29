@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 前端构建验证
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Build frontend
+        run: node scripts/build.js
+
+      # 后端语法 + 启动验证
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install backend deps
+        run: pip install -r backend/requirements.txt
+
+      - name: Check backend syntax
+        run: python -m py_compile backend/main.py
+
+      - name: Start backend and verify
+        env:
+          LLM_API_KEY: ""
+        run: |
+          cd backend
+          python -m uvicorn main:app --host 127.0.0.1 --port 8001 &
+          sleep 5
+          curl -f http://127.0.0.1:8001/api/status
+          echo ""
+          echo "BACKEND_OK"
