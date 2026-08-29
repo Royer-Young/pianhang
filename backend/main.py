@@ -274,10 +274,20 @@ def get_intro(req: GetIntroRequest):
     return ai_get_intro(req.name, req.type)
 
 
-@app.get("/")
+@app.get("/api/status")
 def root():
     return {
         "service": "偏航后端",
         "mode": "Mock(无密钥)" if MOCK_MODE else f"Real({LLM_MODEL})",
         "endpoints": ["POST /api/parse_pref", "POST /api/get_reason", "POST /api/get_intro"]
     }
+
+
+# ---------- 静态前端（同源部署） ----------
+# 一条隧道同时服务页面与 AI 接口，前端请求 /api/* 与页面同源，无需跨域。
+# 挂载在 API 路由之后，未匹配的路径由静态文件兜底（含默认首页 index.html）。
+from fastapi.staticfiles import StaticFiles
+
+_DIST_DIR = Path(__file__).resolve().parent.parent / "dist"
+if _DIST_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(_DIST_DIR), html=True), name="static")

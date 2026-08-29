@@ -110,7 +110,7 @@
     // 返回 Promise，resolve 位置或 null
     function ipLocate() {
         var urls = [
-            'http://ip-api.com/json/?lang=zh-CN&fields=status,lat,lon,city',
+            'https://ip-api.com/json/?lang=zh-CN&fields=status,lat,lon,city',
             'https://ipapi.co/json/',
             'https://ipinfo.io/json'
         ];
@@ -614,7 +614,7 @@
 
     // 页面初始化时获取后端模式
     function fetchBackendMode() {
-        fetch(AI_BASE + '/').then(function (r) { return r.json(); }).then(function (d) {
+        fetch(AI_BASE + '/api/status').then(function (r) { return r.json(); }).then(function (d) {
             backendMode = (d && d.mode) ? d.mode : '未知';
             console.log('后端模式: ' + backendMode);
         }).catch(function (e) {

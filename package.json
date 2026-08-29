@@ -4,5 +4,8 @@
   "private": true,
   "scripts": {
     "build": "node scripts/build.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.127.1"
   }
 }

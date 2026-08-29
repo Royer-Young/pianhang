@@ -1,0 +1,9 @@
+name = "pianhang-ai"
+main = "index.js"
+compatibility_date = "2026-08-01"
+
+# LLM_API_KEY 是敏感密钥，请勿写入本文件；
+# 部署前用以下命令单独设置（密钥不会出现在代码仓库）：
+#   npx wrangler secret put LLM_API_KEY
+[vars]
+LLM_MODEL = "deepseek-v4-flash"
