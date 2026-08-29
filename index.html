@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <title>偏航</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+</head>
+<body>
+    <main class="container">
+        <header class="hero">
+            <h1 class="title">偏航</h1>
+            <p class="subtitle">偏离最短路径，遇见意外风景</p>
+        </header>
+
+        <!-- 开始屏：时间选择 + 开始偏航 -->
+        <section class="view view-start" id="view-start">
+            <section class="time-picker" aria-label="选择偏航时间">
+                <label class="section-label">你有多少时间？</label>
+                <div class="time-options">
+                    <button type="button" class="time-option" data-minutes="30">30分钟</button>
+                    <button type="button" class="time-option" data-minutes="60">60分钟</button>
+                    <button type="button" id="time-pick-btn" class="time-option">自选</button>
+                </div>
+                <p class="time-chosen" id="time-chosen" hidden></p>
+            </section>
+
+            <section class="action">
+                <button type="button" id="start-btn" class="start-btn" disabled>开始偏航</button>
+            </section>
+        </section>
+
+        <!-- 时间轮盘：小时 + 分钟滚动选择 -->
+        <div class="wheel-modal" id="wheel-modal" hidden>
+            <div class="wheel-modal-box">
+                <div class="wheel-title">选择偏航时间</div>
+                <div class="wheel-container">
+                    <div class="wheel-col" id="wheel-hours"></div>
+                    <div class="wheel-col" id="wheel-minutes"></div>
+                    <div class="wheel-highlight"></div>
+                </div>
+                <div class="wheel-value" id="wheel-value"></div>
+                <div class="wheel-btns">
+                    <button type="button" id="wheel-cancel" class="wheel-btn wheel-cancel">取消</button>
+                    <button type="button" id="wheel-ok" class="wheel-btn wheel-ok">确定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 目的地问询屏：有/没有目的地 -->
+        <section class="view view-dest" id="view-dest" hidden>
+            <div class="dest-question">您是否有目的地呢？</div>
+            <div class="dest-options">
+                <button type="button" id="dest-yes" class="dest-btn">有目的地</button>
+                <button type="button" id="dest-no" class="dest-btn">没有目的地</button>
+            </div>
+        </section>
+
+        <!-- 偏航偏好界面（全屏视图，非弹窗） -->
+        <section class="view view-pref" id="view-pref" hidden>
+            <!-- 起点：始终显示（地图选点） -->
+            <div class="pref-block" id="start-block">
+                <div class="pref-block-title">起点</div>
+                <button type="button" id="start-pick-btn" class="route-pick-btn">🗺️ 在地图上点选起点</button>
+                <p class="pick-coord" id="start-coord">尚未选择（默认使用当前位置）</p>
+            </div>
+            <!-- 终点：仅"有目的地"时显示 -->
+            <div class="pref-block route-block" id="route-block" hidden>
+                <div class="pref-block-title">终点</div>
+                <button type="button" id="end-pick-btn" class="route-pick-btn">🗺️ 在地图上点选终点</button>
+                <p class="pick-coord" id="end-coord">尚未选择终点</p>
+            </div>
+            <div class="pref-block">
+                <div class="pref-block-title">出行方式</div>
+                <div class="pref-modes" id="pref-modes">
+                    <button type="button" class="pref-mode active" data-mode="walk">步行</button>
+                    <button type="button" class="pref-mode" data-mode="bike">骑行·自行车</button>
+                    <button type="button" class="pref-mode" data-mode="ebike">骑行·电动车</button>
+                </div>
+            </div>
+            <div class="pref-block">
+                <div class="pref-block-title">想去哪里（可多选）</div>
+                <div class="pref-tags" id="pref-tags">
+                    <button type="button" class="pref-tag" data-type="公园">公园</button>
+                    <button type="button" class="pref-tag" data-type="咖啡店">咖啡店</button>
+                    <button type="button" class="pref-tag" data-type="书店">书店</button>
+                    <button type="button" class="pref-tag" data-type="博物馆">博物馆</button>
+                    <button type="button" class="pref-tag" data-type="广场">广场</button>
+                    <button type="button" class="pref-tag" data-type="景点">景点</button>
+                    <button type="button" class="pref-tag pref-tag-other" id="pref-other-toggle">其他</button>
+                </div>
+                <input type="text" id="pref-other-input" class="pref-other-input" placeholder="例：小众、慢节奏、走弄堂…" autocomplete="off" hidden>
+            </div>
+            <button type="button" id="pref-confirm-btn" class="pref-confirm-btn">生成偏航路线</button>
+        </section>
+
+        <!-- 偏航推荐界面（全屏视图，非弹窗） -->
+        <section class="view view-routes" id="view-routes" hidden>
+            <div class="routes-head">
+                <span class="routes-title">偏航推荐</span>
+                <button type="button" class="routes-close" id="routes-close" aria-label="返回">←</button>
+            </div>
+            <div class="routes-body" id="routes-body"></div>
+        </section>
+
+        <!-- 探索屏：地图 + 重新偏航 -->
+        <section class="view view-explore" id="view-explore" hidden>
+            <section class="pref-section" aria-label="探索偏好">
+                <button type="button" id="pref-open-btn" class="pref-open-btn">重新偏航</button>
+            </section>
+
+            <section class="map-section" aria-label="地图">
+                <div id="map" class="map"></div>
+                <div class="pick-tip" id="pick-tip" hidden>请在地图上点击选择位置</div>
+                <div class="nav-bar" id="nav-bar" hidden></div>
+                <p class="map-tip">点击地图任意位置，控制台将输出经纬度</p>
+            </section>
+        </section>
+
+        <footer class="hint">
+            <p>选择一段空闲时间，开启一次漫无目的的城市探索。</p>
+        </footer>
+    </main>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="js/app.js?v=26"></script>
+</body>
+</html>
