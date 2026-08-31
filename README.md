@@ -52,6 +52,22 @@ cp .env.example .env
 
 > 模拟模式下，路线推荐理由与地点简介由内置规则生成，可正常体验完整流程，但内容为预设文本。
 
+## 快速开始（Windows 一键启动）
+
+如果只是想快速跑起来看效果，且使用 **Windows**：
+
+1. 安装 [Python 3.9+](https://www.python.org/downloads/)（安装时务必勾选 **Add Python to PATH**）
+2. 安装后端依赖：
+
+   ```bash
+   pip install -r backend/requirements.txt
+   ```
+
+3. **双击项目根目录下的 `start.bat`**
+4. 脚本会自动启动后端（8001 端口）与前端（8000 端口）两个服务，并自动打开浏览器访问 `http://localhost:8000`
+
+> 未配置大模型密钥时自动进入模拟模式，无需任何额外配置即可完整体验全部功能；配置真实 AI 推荐见下文「环境变量配置」。
+
 ## 本地运行
 
 ### 1. 克隆仓库
