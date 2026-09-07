@@ -68,9 +68,26 @@ cp .env.example .env
 
 运行后只需保留弹出的 **`pianhang-service`** 黑色窗口即可。
 
-> - 需要 [Node.js 16+](https://nodejs.org/) 用于前端构建；若本机没有 Node 且 `dist/` 已存在，脚本会直接复用现有构建产物。
+> - 需要 [Node.js 16+](https://nodejs.org/) 用于前端构建。`dist/` 构建产物**不入库**，所以新克隆的仓库没有 `dist/`：本机装了 Node 时双击即自动构建；若已存在 `dist/`（例如构建过一次），则即使没有 Node 也会直接复用。
 > - 未配置大模型密钥时自动进入模拟模式，无需任何额外配置即可完整体验全部功能；配置真实 AI 推荐见下文「环境变量配置」。
 > - 本机其他设备可访问 `http://<本机IP>:8000`（同一 Wi-Fi，允许 Python 通过防火墙即可）。
+
+### macOS / Linux 一键启动
+
+macOS / Linux 使用 `start.sh`（效果与 `start.bat` 相同，同源单服务）：
+
+```bash
+# 1. 安装后端依赖
+pip install -r backend/requirements.txt
+
+# 2. 一键启动（自动用 SAME_ORIGIN 构建前端后，在 :8000 托管页面与接口）
+./start.sh
+```
+
+访问 `http://localhost:8000`。停止服务按 `Ctrl+C`。
+
+> 若提示 `Permission denied`，先执行 `chmod +x start.sh`。
+> 同样需要 Node.js 用于首次前端构建（`dist/` 不入库）；无 Node 且无 `dist/` 时会给出明确报错。
 
 ### 公网演示（cpolar 内网穿透，可选）
 
