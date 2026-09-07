@@ -1,0 +1,18 @@
+# Line-ending policy (core.autocrlf=true on Windows would otherwise break scripts)
+* text=auto
+
+# Shell scripts MUST stay LF, otherwise bash fails on CRLF
+*.sh  text eol=lf
+
+# Batch files are ASCII and Windows-native: use CRLF
+*.bat text eol=crlf
+
+# Source / docs: normalize to LF in the repo
+*.py   text eol=lf
+*.js   text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.md   text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.txt  text eol=lf
