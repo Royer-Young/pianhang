@@ -21,12 +21,13 @@ load_dotenv(_env_path)
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.openai-next.com/v1")
-LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-v4-flash")
 
 MOCK_MODE = not LLM_API_KEY  # 未配置密钥时启用模拟模式
 
+# 统一超时：key 失效或中转服务卡顿时快速回退到内置模板，避免前端长时间等待
 if not MOCK_MODE:
-    llm_client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
+    llm_client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL, timeout=20.0)
 
 app = FastAPI(title="偏航后端", version="0.2.0")
 
