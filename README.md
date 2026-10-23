@@ -98,19 +98,6 @@ pip install -r backend/requirements.txt
 > 若提示 `Permission denied`，先执行 `chmod +x start.sh`。
 > 同样需要 Node.js 用于首次前端构建（`dist/` 不入库）；无 Node 且无 `dist/` 时会给出明确报错。
 
-### 公网演示（cpolar 内网穿透，可选）
-
-想让**评委 / 外网任意设备**通过一个公网 URL 访问？
-
-1. 先按上文用 `start.bat` 把服务跑起来（脚本会把实际端口写进 `.pianhang-port`）。
-2. 准备 [cpolar](https://www.cpolar.com/)：把 `cpolar.exe` 与含 `authtoken` 的 `cpolar.yml` 放入 `.tools\cpolar\`（该目录已被 `.gitignore` 忽略，不会入库）。
-3. **双击 `go-online.bat`**，脚本会读取 `.pianhang-port` 确认服务在线（本地服务未启动时会自动挑空闲端口启动），再把该端口交给 cpolar，打开隧道窗口；其中的 `URL:` 行即公网地址，可分享给任何人；也可以在 [cpolar 控制台](https://dashboard.cpolar.com) 查看。
-
-> 注意事项：
-> - 演示期间**本机需保持开机**，且 `pianhang-service` 与 `cpolar-tunnel` 两个窗口都保持打开。
-> - 免费版每次运行会生成**新的随机域名**；如需固定域名可升级 cpolar 套餐使用保留域名。
-> - 公网访问走的是同源单服务模式，无需额外配置跨域。
-
 ## 本地运行
 
 ### 1. 克隆仓库
