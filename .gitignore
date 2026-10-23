@@ -21,6 +21,11 @@ venv/
 backend/__pycache__/
 backend/*.pyc
 backend/*.pyo
+# 本地账号数据库（含用户数据，不入库）
+backend/*.db
+backend/*.db-*
+backend/*.db3
+backend/*.db3-*
 
 # IDE
 .vscode/
@@ -52,3 +57,6 @@ coverage/
 
 # 本地工具（cpolar 内网穿透客户端等，不入库）
 .tools/
+
+# 一键启动脚本写入的运行时端口
+.pianhang-port

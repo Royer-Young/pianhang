@@ -26,7 +26,7 @@ const distDir = path.join(rootDir, 'dist');
 if (fs.existsSync(distDir)) fs.rmSync(distDir, { recursive: true });
 fs.mkdirSync(distDir, { recursive: true });
 
-['css', 'js'].forEach(dir => {
+['css', 'js', 'assets'].forEach(dir => {
   copyDir(path.join(rootDir, dir), path.join(distDir, dir));
 });
 

@@ -2,10 +2,8 @@
   "name": "pianhang",
   "version": "1.0.0",
   "private": true,
+  "description": "偏航 - 城市步行探索 Web 应用",
   "scripts": {
     "build": "node scripts/build.js"
-  },
-  "devDependencies": {
-    "wrangler": "^4.127.1"
   }
 }

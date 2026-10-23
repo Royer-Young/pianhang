@@ -6,125 +6,850 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <title>偏航</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/shell.css?v=38">
+    <link rel="stylesheet" href="css/auth.css?v=38">
+    <link rel="stylesheet" href="css/home.css?v=38">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
-<body>
-    <main class="container">
-        <header class="hero">
-            <h1 class="title">偏航</h1>
-            <p class="subtitle">偏离最短路径，遇见意外风景</p>
-        </header>
+<body class="booting">
 
-        <!-- 开始屏：时间选择 + 开始偏航 -->
-        <section class="view view-start" id="view-start">
-            <section class="time-picker" aria-label="选择偏航时间">
-                <label class="section-label">你有多少时间？</label>
-                <div class="time-options">
-                    <button type="button" class="time-option" data-minutes="30">30分钟</button>
-                    <button type="button" class="time-option" data-minutes="60">60分钟</button>
-                    <button type="button" id="time-pick-btn" class="time-option">自选</button>
-                </div>
-                <p class="time-chosen" id="time-chosen" hidden></p>
-            </section>
+    <!-- 页面氛围：城市夜景底图（随页面交叉淡入） + 灯光线路 -->
+    <div class="page-bg" id="page-bg" aria-hidden="true">
+        <div class="bg-layer" id="bg-layer-a"></div>
+        <div class="bg-layer" id="bg-layer-b"></div>
+        <div class="bg-veil"></div>
 
-            <section class="action">
-                <button type="button" id="start-btn" class="start-btn" disabled>开始偏航</button>
-            </section>
-        </section>
+        <svg class="route-lights" id="route-lights" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <linearGradient id="routeGrad" x1="0" y1="1" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#f59e0b" stop-opacity="0"></stop>
+                    <stop offset="30%" stop-color="#fbbf24" stop-opacity="0.85"></stop>
+                    <stop offset="66%" stop-color="#f59e0b" stop-opacity="0.7"></stop>
+                    <stop offset="100%" stop-color="#7dd3fc" stop-opacity="0.25"></stop>
+                </linearGradient>
+                <filter id="routeGlow" x="-40%" y="-40%" width="180%" height="180%">
+                    <feGaussianBlur stdDeviation="7" result="blur"></feGaussianBlur>
+                </filter>
+                <filter id="dotGlow" x="-200%" y="-200%" width="500%" height="500%">
+                    <feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur>
+                    <feMerge>
+                        <feMergeNode in="blur"></feMergeNode>
+                        <feMergeNode in="SourceGraphic"></feMergeNode>
+                    </feMerge>
+                </filter>
+            </defs>
 
-        <!-- 时间轮盘：小时 + 分钟滚动选择 -->
-        <div class="wheel-modal" id="wheel-modal" hidden>
-            <div class="wheel-modal-box">
-                <div class="wheel-title">选择偏航时间</div>
-                <div class="wheel-container">
-                    <div class="wheel-col" id="wheel-hours"></div>
-                    <div class="wheel-col" id="wheel-minutes"></div>
-                    <div class="wheel-highlight"></div>
-                </div>
-                <div class="wheel-value" id="wheel-value"></div>
-                <div class="wheel-btns">
-                    <button type="button" id="wheel-cancel" class="wheel-btn wheel-cancel">取消</button>
-                    <button type="button" id="wheel-ok" class="wheel-btn wheel-ok">确定</button>
-                </div>
-            </div>
+            <!-- 远处若隐若现的城市灯网 -->
+            <g class="route-net" fill="none">
+                <path d="M 80 940 C 260 820, 300 980, 480 900 S 740 760, 900 860 S 1120 980, 1300 860 S 1500 760, 1660 820"></path>
+                <path d="M 240 -40 C 340 120, 500 140, 600 300 S 760 480, 920 400 S 1080 200, 1240 180 S 1480 300, 1640 220"></path>
+                <path d="M -40 300 C 160 360, 280 260, 420 340 S 620 520, 760 440 S 980 260, 1160 320 S 1420 440, 1660 360"></path>
+                <path d="M 60 120 C 220 200, 360 160, 500 60 S 780 40, 900 160 S 1060 300, 1250 260 S 1520 180, 1680 260"></path>
+            </g>
+
+            <!-- 主偏航线 -->
+            <g class="route-main" fill="none">
+                <path class="route-halo"
+                      d="M -60 780 C 120 760, 170 610, 300 640 S 430 810, 560 730 S 690 520, 830 560 S 980 760, 1120 660 S 1290 400, 1460 430 S 1580 520, 1700 470"></path>
+                <path id="routeMain" class="route-line"
+                      d="M -60 780 C 120 760, 170 610, 300 640 S 430 810, 560 730 S 690 520, 830 560 S 980 760, 1120 660 S 1290 400, 1460 430 S 1580 520, 1700 470"></path>
+                <path class="route-dash"
+                      d="M -60 780 C 120 760, 170 610, 300 640 S 430 810, 560 730 S 690 520, 830 560 S 980 760, 1120 660 S 1290 400, 1460 430 S 1580 520, 1700 470"></path>
+            </g>
+
+            <!-- 途经点 -->
+            <g class="route-nodes">
+                <circle cx="300" cy="640" r="3.5"></circle>
+                <circle cx="560" cy="730" r="3"></circle>
+                <circle cx="830" cy="560" r="3.5"></circle>
+                <circle cx="1120" cy="660" r="3"></circle>
+                <circle cx="1460" cy="430" r="4"></circle>
+            </g>
+
+            <!-- 沿线路缓慢移动的光点 -->
+            <circle class="route-traveler" r="4.5" filter="url(#dotGlow)">
+                <animateMotion dur="24s" repeatCount="indefinite" rotate="auto">
+                    <mpath href="#routeMain"></mpath>
+                </animateMotion>
+            </circle>
+            <circle class="route-traveler route-traveler-back" r="2.6" filter="url(#dotGlow)">
+                <animateMotion dur="32s" begin="-13s" repeatCount="indefinite"
+                               keyPoints="1;0" keyTimes="0;1" calcMode="linear">
+                    <mpath href="#routeMain"></mpath>
+                </animateMotion>
+            </circle>
+        </svg>
+    </div>
+
+    <!-- 开屏动画：罗盘校准 -->
+    <div class="boot-screen" id="boot-screen" role="status" aria-live="polite">
+        <div class="boot-glow"></div>
+        <svg class="boot-compass" viewBox="0 0 120 120" aria-hidden="true">
+            <circle cx="60" cy="60" r="52" class="compass-ring"></circle>
+            <circle cx="60" cy="60" r="40" class="compass-ring-soft"></circle>
+            <g class="compass-needle">
+                <polygon points="60,16 67,60 60,104 53,60" fill="#f59e0b"></polygon>
+                <polygon points="60,16 67,60 60,60 53,60" fill="#fbbf24"></polygon>
+            </g>
+            <circle cx="60" cy="60" r="5" fill="#0f172a" stroke="#fbbf24" stroke-width="2"></circle>
+        </svg>
+        <h1 class="boot-title">偏航</h1>
+        <p class="boot-sub">偏离最短路径，遇见意外风景</p>
+        <div class="boot-progress"><span></span></div>
+        <p class="boot-hint">正在校准你的方向…</p>
+        <button type="button" class="boot-skip" id="boot-skip">跳过</button>
+    </div>
+
+    <!-- 路由切换遮罩 -->
+    <div class="route-veil" id="route-veil" hidden aria-hidden="true">
+        <div class="veil-box">
+            <svg class="veil-compass" viewBox="0 0 100 100" aria-hidden="true">
+                <circle cx="50" cy="50" r="42" class="compass-ring"></circle>
+                <g class="compass-needle">
+                    <polygon points="50,14 56,50 50,86 44,50" fill="#f59e0b"></polygon>
+                    <polygon points="50,14 56,50 50,50 44,50" fill="#fbbf24"></polygon>
+                </g>
+                <circle cx="50" cy="50" r="4" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5"></circle>
+            </svg>
+            <p class="veil-text" id="veil-text">正在校准你的方向…</p>
         </div>
+    </div>
 
-        <!-- 目的地问询屏：有/没有目的地 -->
-        <section class="view view-dest" id="view-dest" hidden>
-            <div class="dest-question">您是否有目的地呢？</div>
-            <div class="dest-options">
-                <button type="button" id="dest-yes" class="dest-btn">有目的地</button>
-                <button type="button" id="dest-no" class="dest-btn">没有目的地</button>
+    <div class="app-shell">
+        <!-- ===== 左侧侧边栏 ===== -->
+        <aside class="sidebar" id="sidebar" aria-label="主导航">
+            <div class="sidebar-brand">
+                <a class="brand-mark" href="#/home" aria-label="偏航首页">
+                    <span class="brand-text">偏航</span>
+                    <span class="brand-en">PIANHANG</span>
+                    <svg class="brand-short" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <path d="M4 17.5c4 0 4.5-9 8-9s3.5 7 8 7"/>
+                        <circle cx="4" cy="17.5" r="1.7"/>
+                        <circle cx="20" cy="15.5" r="1.7"/>
+                    </svg>
+                </a>
+                <button type="button" class="sidebar-collapse" id="sidebar-collapse"
+                        aria-label="折叠侧边栏" aria-expanded="true" title="折叠 / 展开侧边栏">«</button>
             </div>
-        </section>
 
-        <!-- 偏航偏好界面（全屏视图，非弹窗） -->
-        <section class="view view-pref" id="view-pref" hidden>
-            <!-- 起点：始终显示（地图选点） -->
-            <div class="pref-block" id="start-block">
-                <div class="pref-block-title">起点</div>
-                <button type="button" id="start-pick-btn" class="route-pick-btn">🗺️ 在地图上点选起点</button>
-                <p class="pick-coord" id="start-coord">尚未选择（默认使用当前位置）</p>
-            </div>
-            <!-- 终点：仅"有目的地"时显示 -->
-            <div class="pref-block route-block" id="route-block" hidden>
-                <div class="pref-block-title">终点</div>
-                <button type="button" id="end-pick-btn" class="route-pick-btn">🗺️ 在地图上点选终点</button>
-                <p class="pick-coord" id="end-coord">尚未选择终点</p>
-            </div>
-            <div class="pref-block">
-                <div class="pref-block-title">出行方式</div>
-                <div class="pref-modes" id="pref-modes">
-                    <button type="button" class="pref-mode active" data-mode="walk">步行</button>
-                    <button type="button" class="pref-mode" data-mode="bike">骑行·自行车</button>
-                    <button type="button" class="pref-mode" data-mode="ebike">骑行·电动车</button>
-                </div>
-            </div>
-            <div class="pref-block">
-                <div class="pref-block-title">想去哪里（可多选）</div>
-                <div class="pref-tags" id="pref-tags">
-                    <button type="button" class="pref-tag" data-type="公园">公园</button>
-                    <button type="button" class="pref-tag" data-type="咖啡店">咖啡店</button>
-                    <button type="button" class="pref-tag" data-type="书店">书店</button>
-                    <button type="button" class="pref-tag" data-type="博物馆">博物馆</button>
-                    <button type="button" class="pref-tag" data-type="广场">广场</button>
-                    <button type="button" class="pref-tag" data-type="景点">景点</button>
-                    <button type="button" class="pref-tag pref-tag-other" id="pref-other-toggle">其他</button>
-                </div>
-                <input type="text" id="pref-other-input" class="pref-other-input" placeholder="例：小众、慢节奏、走弄堂…" autocomplete="off" hidden>
-            </div>
-            <button type="button" id="pref-confirm-btn" class="pref-confirm-btn">生成偏航路线</button>
-        </section>
+            <nav class="side-nav">
+                <a class="nav-item" href="#/home" data-route="home" title="开始偏航" aria-label="开始偏航">
+                    <span class="nav-label">开始偏航</span>
+                    <svg class="nav-short" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <circle cx="12" cy="12" r="7.5"/>
+                        <path d="M15.2 8.8l-1.9 4.5-4.5 1.9 1.9-4.5z"/>
+                    </svg>
+                </a>
+                <a class="nav-item" href="#/footprints" data-route="footprints" title="我的足迹" aria-label="我的足迹">
+                    <span class="nav-label">我的足迹</span>
+                    <svg class="nav-short" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <path d="M12 21c3.5-4 6-6.8 6-10a6 6 0 1 0-12 0c0 3.2 2.5 6 6 10z"/>
+                        <circle cx="12" cy="10.5" r="2"/>
+                    </svg>
+                </a>
+                <a class="nav-item" href="#/favorites" data-route="favorites" title="我的收藏" aria-label="我的收藏">
+                    <span class="nav-label">我的收藏</span>
+                    <svg class="nav-short" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <path d="M7 4.5h10v15l-5-3.2-5 3.2z"/>
+                    </svg>
+                </a>
+                <a class="nav-item" href="#/history" data-route="history" title="偏航记录" aria-label="偏航记录">
+                    <span class="nav-label">偏航记录</span>
+                    <svg class="nav-short" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <circle cx="12" cy="12" r="7.5"/>
+                        <path d="M12 8v4.3l2.8 1.8"/>
+                    </svg>
+                </a>
+                <a class="nav-item" href="#/achievements" data-route="achievements" title="成就" aria-label="成就">
+                    <span class="nav-label">成就</span>
+                    <svg class="nav-short" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <circle cx="12" cy="9" r="4"/>
+                        <path d="M8.7 12.6L7.5 20l4.5-2.3L16.5 20l-1.2-7.4"/>
+                    </svg>
+                </a>
+                <a class="nav-item" href="#/settings" data-route="settings" title="偏好设置" aria-label="偏好设置">
+                    <span class="nav-label">偏好设置</span>
+                    <svg class="nav-short" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <path d="M4 7h7M16 7h4M4 12h3M12 12h8M4 17h9M18 17h2"/>
+                        <circle cx="13.5" cy="7" r="1.8"/>
+                        <circle cx="9" cy="12" r="1.8"/>
+                        <circle cx="15" cy="17" r="1.8"/>
+                    </svg>
+                </a>
+                <a class="nav-item" href="#/about" data-route="about" title="关于偏航" aria-label="关于偏航">
+                    <span class="nav-label">关于偏航</span>
+                    <svg class="nav-short" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <circle cx="12" cy="12" r="7.5"/>
+                        <path d="M12 11v5"/>
+                        <circle cx="12" cy="8" r="0.9" fill="currentColor" stroke="none"/>
+                    </svg>
+                </a>
+            </nav>
 
-        <!-- 偏航推荐界面（全屏视图，非弹窗） -->
-        <section class="view view-routes" id="view-routes" hidden>
-            <div class="routes-head">
-                <span class="routes-title">偏航推荐</span>
-                <button type="button" class="routes-close" id="routes-close" aria-label="返回">←</button>
+            <!-- 侧边栏底部：个人中心入口 -->
+            <div class="side-foot">
+                <a class="profile-card" href="#/profile" data-route="profile" id="profile-card" title="个人中心">
+                    <span class="profile-meta">
+                        <span class="profile-name">个人中心</span>
+                        <span class="profile-sub" id="sidebar-sub">未登录 · 把走过的路留下</span>
+                    </span>
+                    <span class="profile-arrow">›</span>
+                    <svg class="profile-short" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <circle cx="12" cy="8.5" r="3.2"/>
+                        <path d="M5.5 19.5c0-3.2 2.9-5.5 6.5-5.5s6.5 2.3 6.5 5.5"/>
+                    </svg>
+                </a>
             </div>
-            <div class="routes-body" id="routes-body"></div>
-        </section>
+        </aside>
 
-        <!-- 探索屏：地图 + 重新偏航 -->
-        <section class="view view-explore" id="view-explore" hidden>
-            <section class="pref-section" aria-label="探索偏好">
-                <button type="button" id="pref-open-btn" class="pref-open-btn">重新偏航</button>
-            </section>
+        <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
 
-            <section class="map-section" aria-label="地图">
-                <div id="map" class="map"></div>
-                <div class="pick-tip" id="pick-tip" hidden>请在地图上点击选择位置</div>
-                <div class="nav-bar" id="nav-bar" hidden></div>
-                <p class="map-tip">点击地图任意位置，控制台将输出经纬度</p>
-            </section>
-        </section>
+        <!-- ===== 主内容区 ===== -->
+        <main class="main">
+            <header class="mobile-topbar">
+                <button type="button" class="topbar-btn" id="drawer-toggle" aria-label="打开菜单" aria-expanded="false">☰</button>
+                <span class="mobile-title" id="mobile-title">开始偏航</span>
+                <a class="topbar-link" href="#/profile" aria-label="个人中心">个人</a>
+            </header>
 
-        <footer class="hint">
-            <p>选择一段空闲时间，开启一次漫无目的的城市探索。</p>
-        </footer>
-    </main>
+            <div class="main-inner">
+
+                <!-- 首页：保留原有完整偏航流程 -->
+                <section class="page" data-page="home" id="page-home">
+                    <div class="container">
+                        <header class="hero">
+                            <h1 class="title">偏航</h1>
+                            <p class="subtitle">偏离最短路径，遇见意外风景</p>
+                        </header>
+
+                        <!-- 此刻天气：进入地图选点后仍然保留，作为路线生成的直接上下文 -->
+                        <div class="now-strip is-loading" id="now-strip" aria-live="polite">
+                            <span class="now-live" aria-hidden="true"></span>
+                            <span class="now-place" id="now-place">此刻</span>
+                            <span class="now-weather"><strong id="now-temp">—°</strong><span id="now-desc">读取天气</span></span>
+                            <span class="now-note" id="now-note">正在确认此刻的天气</span>
+                        </div>
+
+                        <!-- 三步流程提示：只改变呈现，不改变原有流程 -->
+                        <nav class="flow-steps" id="flow-steps" aria-label="偏航步骤">
+                            <span class="flow-step is-active" data-flow-step="1"><em>01</em>时间</span>
+                            <i class="flow-line" aria-hidden="true"></i>
+                            <span class="flow-step" data-flow-step="2"><em>02</em>目的地</span>
+                            <i class="flow-line" aria-hidden="true"></i>
+                            <span class="flow-step" data-flow-step="3"><em>03</em>偏好</span>
+                        </nav>
+
+                        <!-- 开始屏：时间选择 + 开始偏航 -->
+                        <section class="view view-start" id="view-start">
+                            <section class="time-picker" aria-label="选择偏航时间">
+                                <div class="section-head">
+                                    <label class="section-label">你有多少时间？</label>
+                                    <span class="section-note">不必精确，选一段大概的空闲</span>
+                                </div>
+                                <div class="time-options">
+                                    <button type="button" class="time-option" data-minutes="30">
+                                        <span class="time-index">01</span>
+                                        <span class="time-value">30</span>
+                                        <span class="time-unit">分钟</span>
+                                        <span class="time-caption">一段散步</span>
+                                    </button>
+                                    <button type="button" class="time-option" data-minutes="60">
+                                        <span class="time-index">02</span>
+                                        <span class="time-value">60</span>
+                                        <span class="time-unit">分钟</span>
+                                        <span class="time-caption">一次完整漫游</span>
+                                    </button>
+                                    <button type="button" id="time-pick-btn" class="time-option">
+                                        <span class="time-index">03</span>
+                                        <span class="time-value" id="time-pick-value">自选</span>
+                                        <span class="time-unit" id="time-pick-unit">时长</span>
+                                        <span class="time-caption">精确设定</span>
+                                    </button>
+                                </div>
+                                <p class="time-chosen" id="time-chosen" hidden></p>
+                            </section>
+
+                            <section class="action">
+                                <button type="button" id="start-btn" class="start-btn" disabled>
+                                    <span id="start-btn-label">开始偏航</span>
+                                    <span class="btn-arrow" aria-hidden="true">→</span>
+                                </button>
+                            </section>
+                        </section>
+
+                        <!-- 时间轮盘：小时 + 分钟滚动选择 -->
+                        <div class="wheel-modal" id="wheel-modal" hidden>
+                            <div class="wheel-modal-box">
+                                <div class="wheel-title">选择偏航时间</div>
+                                <div class="wheel-container">
+                                    <div class="wheel-col" id="wheel-hours"></div>
+                                    <div class="wheel-col" id="wheel-minutes"></div>
+                                    <div class="wheel-highlight"></div>
+                                </div>
+                                <div class="wheel-value" id="wheel-value"></div>
+                                <div class="wheel-btns">
+                                    <button type="button" id="wheel-cancel" class="wheel-btn wheel-cancel">取消</button>
+                                    <button type="button" id="wheel-ok" class="wheel-btn wheel-ok">确定</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 目的地问询屏：有/没有目的地 -->
+                        <section class="view view-dest" id="view-dest" hidden>
+                            <div class="view-intro">
+                                <span class="view-kicker">02 / 目的地</span>
+                                <h2 class="view-title">这次出门，有目的地吗？</h2>
+                                <p class="view-desc">有的话，偏航会替你安排一段绕路；没有也没关系，街道会给出方向。</p>
+                            </div>
+                            <div class="dest-options">
+                                <button type="button" id="dest-yes" class="dest-btn">
+                                    <span class="dest-index">A</span>
+                                    <strong>有目的地</strong>
+                                    <small>设定起终点，在途中多拐几个弯</small>
+                                    <span class="dest-arrow" aria-hidden="true">→</span>
+                                </button>
+                                <button type="button" id="dest-no" class="dest-btn">
+                                    <span class="dest-index">B</span>
+                                    <strong>没有目的地</strong>
+                                    <small>只给一段时间，让城市决定路线</small>
+                                    <span class="dest-arrow" aria-hidden="true">→</span>
+                                </button>
+                            </div>
+                        </section>
+
+                        <!-- 偏航偏好界面（全屏视图，非弹窗） -->
+                        <section class="view view-pref" id="view-pref" hidden>
+                            <div class="view-intro view-intro-compact">
+                                <span class="view-kicker">03 / 偏好</span>
+                                <h2 class="view-title">把范围缩小一点</h2>
+                                <p class="view-desc">只改你想改的，其余交给偏航。</p>
+                                <p class="pref-summary" id="pref-summary">
+                                    <span id="pref-summary-text">本次：步行 · 适中</span>
+                                    <a href="#/settings" class="pref-summary-link">改默认</a>
+                                </p>
+                            </div>
+
+                            <div class="plan-context" id="plan-context">
+                                <span class="plan-context-label">此刻</span>
+                                <span class="plan-context-weather" id="plan-weather">—° · 读取中</span>
+                                <span class="plan-context-note" id="plan-weather-note">正在读取天气</span>
+                            </div>
+
+                            <div class="pref-sheet">
+                                <!-- 起点：搜索 + 地图点选 -->
+                                <div class="place-field" id="start-block">
+                                    <div class="place-head">
+                                        <span class="place-label">起点</span>
+                                        <span class="place-state" id="start-state">默认当前位置</span>
+                                    </div>
+                                    <div class="place-actions">
+                                        <button type="button" id="start-pick-btn" class="place-map-btn">在地图上选起点</button>
+                                        <button type="button" id="start-reset-btn" class="place-reset-btn" hidden>用当前位置</button>
+                                    </div>
+                                    <strong class="place-name" id="start-name" hidden></strong>
+                                    <p class="place-meta" id="start-detail">当前位置 · 自动定位</p>
+                                </div>
+
+                                <!-- 终点：仅"有目的地"时显示 -->
+                                <div class="place-field route-block" id="route-block" hidden>
+                                    <div class="place-head">
+                                        <span class="place-label">终点</span>
+                                        <span class="place-state" id="end-state">尚未选择</span>
+                                    </div>
+                                    <div class="place-actions">
+                                        <button type="button" id="end-pick-btn" class="place-map-btn">在地图上选终点</button>
+                                    </div>
+                                    <strong class="place-name" id="end-name" hidden></strong>
+                                    <p class="place-meta" id="end-detail">终点决定偏航的方向</p>
+                                </div>
+
+                                <div class="pref-divider" aria-hidden="true"></div>
+
+                                <div class="pref-block">
+                                    <div class="pref-block-head">
+                                        <span class="pref-block-title">出行方式</span>
+                                        <span class="pref-block-note">速度与半径</span>
+                                    </div>
+                                    <div class="pref-modes" id="pref-modes">
+                                        <button type="button" class="pref-mode active" data-mode="walk"><span>步行</span><small>慢慢看</small></button>
+                                        <button type="button" class="pref-mode" data-mode="bike"><span>骑行 · 自行车</span><small>风大一点</small></button>
+                                        <button type="button" class="pref-mode" data-mode="ebike"><span>骑行 · 电动车</span><small>去远一点</small></button>
+                                    </div>
+                                </div>
+
+                                <div class="pref-block">
+                                    <div class="pref-block-head">
+                                        <span class="pref-block-title">想在哪里停一停</span>
+                                        <span class="pref-block-note">可多选</span>
+                                    </div>
+                                    <div class="pref-tags" id="pref-tags">
+                                        <button type="button" class="pref-tag" data-type="公园">公园</button>
+                                        <button type="button" class="pref-tag" data-type="咖啡店">咖啡店</button>
+                                        <button type="button" class="pref-tag" data-type="书店">书店</button>
+                                        <button type="button" class="pref-tag" data-type="博物馆">博物馆</button>
+                                        <button type="button" class="pref-tag" data-type="广场">广场</button>
+                                        <button type="button" class="pref-tag" data-type="景点">景点</button>
+                                        <button type="button" class="pref-tag pref-tag-other" id="pref-other-toggle">其他</button>
+                                    </div>
+                                    <input type="text" id="pref-other-input" class="pref-other-input" placeholder="例：小众、慢节奏、走弄堂…" autocomplete="off" hidden>
+                                </div>
+                            </div>
+
+                            <div class="pref-submit">
+                                <button type="button" id="pref-confirm-btn" class="pref-confirm-btn">
+                                    <span class="btn-spinner" aria-hidden="true"></span>
+                                    <span id="pref-confirm-label">生成偏航路线</span>
+                                    <span class="btn-arrow" aria-hidden="true">→</span>
+                                </button>
+                                <p class="pref-error" id="pref-error" role="alert" hidden></p>
+                                <p class="pref-footnote">天气、你的探索节奏和勾选的地点会一起参与决定这 3 条路线。</p>
+                            </div>
+                        </section>
+
+                        <!-- 偏航推荐界面（全屏视图，非弹窗） -->
+                        <section class="view view-routes" id="view-routes" hidden>
+                            <div class="routes-head">
+                                <div class="routes-head-copy">
+                                    <span class="routes-kicker">DETOUR / 03</span>
+                                    <h2 class="routes-title">偏航推荐</h2>
+                                    <p class="routes-sub" id="routes-sub">三条路线，由此刻的天气、节奏和你选的地点决定</p>
+                                </div>
+                                <button type="button" class="routes-close" id="routes-close" aria-label="返回偏好">←</button>
+                            </div>
+                            <div class="routes-body" id="routes-body"></div>
+                        </section>
+
+                        <!-- 探索屏：地图 + 重新偏航 + 地图选点浮层 -->
+                        <section class="view view-explore" id="view-explore" hidden>
+                            <section class="pref-section" aria-label="探索偏好">
+                                <button type="button" id="pref-open-btn" class="pref-open-btn">重新偏航</button>
+                            </section>
+
+                            <section class="map-section" aria-label="地图">
+                                <div id="map" class="map"></div>
+                                <div class="nav-bar" id="nav-bar" hidden></div>
+                                <p class="map-tip">点击地图任意位置，查看附近的街道与地点</p>
+
+                                <!-- 地图选点：全屏地图上的搜索、识别与确认 -->
+                                <div class="pick-ui" id="pick-ui" hidden>
+                                    <div class="pick-top-wrap">
+                                        <div class="pick-top">
+                                            <button type="button" class="pick-close" id="pick-close" aria-label="关闭地图选点">×</button>
+                                            <div class="pick-top-copy">
+                                                <span>MAP PICK</span>
+                                                <strong id="pick-title">选择起点</strong>
+                                            </div>
+                                            <span class="pick-mode-label">点击地图</span>
+                                        </div>
+                                    </div>
+                                    <div class="pick-bottom-wrap">
+                                        <div class="pick-bottom">
+                                            <div class="pick-empty" id="pick-empty">
+                                                <span class="pick-empty-dot" aria-hidden="true"></span>
+                                                <p>点击地图上的任意位置<small>会自动识别附近的建筑、街道或路口</small></p>
+                                            </div>
+                                            <div class="pick-result" id="pick-result" hidden>
+                                                <span class="pick-result-kicker">已选择</span>
+                                                <strong class="pick-result-name" id="pick-result-name"></strong>
+                                                <span class="pick-result-addr" id="pick-result-addr"></span>
+                                                <button type="button" class="pick-confirm" id="pick-confirm">使用这个位置 <span aria-hidden="true">→</span></button>
+                                            </div>
+                                        </div>
+                                        <p class="pick-hint">拖动地图调整范围 · 点击地图重新选点</p>
+                                    </div>
+                                </div>
+                            </section>
+                        </section>
+
+                        <footer class="hint">
+                            <p>选择一段空闲时间，剩下的交给街道。</p>
+                        </footer>
+                    </div>
+                </section>
+
+                <!-- 我的足迹 -->
+                <section class="page" data-page="footprints" hidden>
+                    <div class="page-inner">
+                        <header class="page-head">
+                            <span class="page-kicker">FOOTPRINTS</span>
+                            <h2 class="page-title">我的足迹</h2>
+                            <p class="page-desc">每一次偏航，都会在这座城市留下一条只属于你的线。</p>
+                        </header>
+
+                        <div class="empty-visual">
+                            <div class="faux-map">
+                                <svg viewBox="0 0 420 210" preserveAspectRatio="none" aria-hidden="true">
+                                    <defs>
+                                        <linearGradient id="fpLine" x1="0" y1="0" x2="1" y2="0">
+                                            <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.15"></stop>
+                                            <stop offset="55%" stop-color="#f59e0b" stop-opacity="0.9"></stop>
+                                            <stop offset="100%" stop-color="#fbbf24" stop-opacity="0.35"></stop>
+                                        </linearGradient>
+                                    </defs>
+                                    <g stroke="rgba(255,255,255,0.07)" stroke-width="1">
+                                        <path d="M0 45 H420 M0 90 H420 M0 135 H420 M0 180 H420"></path>
+                                        <path d="M70 0 V210 M140 0 V210 M210 0 V210 M280 0 V210 M350 0 V210"></path>
+                                    </g>
+                                    <path d="M36 168 C 90 150, 96 108, 150 112 S 214 154, 252 120 S 306 58, 384 72"
+                                          fill="none" stroke="url(#fpLine)" stroke-width="3"
+                                          stroke-linecap="round" stroke-dasharray="7 9"></path>
+                                    <circle cx="36" cy="168" r="5" fill="#38bdf8"></circle>
+                                    <circle cx="150" cy="112" r="4.5" fill="#f59e0b"></circle>
+                                    <circle cx="252" cy="120" r="4.5" fill="#f59e0b"></circle>
+                                    <circle cx="384" cy="72" r="5.5" fill="#fbbf24"></circle>
+                                    <circle cx="384" cy="72" r="12" fill="none" stroke="#fbbf24" stroke-opacity="0.35"></circle>
+                                </svg>
+                            </div>
+                            <div class="empty-stats">
+                                <div><strong id="fp-distance">0.00</strong><span>累计公里</span></div>
+                                <div><strong id="fp-count">0</strong><span>偏航次数</span></div>
+                                <div><strong id="fp-places">0</strong><span>发现地点</span></div>
+                            </div>
+                        </div>
+
+                        <div class="detour-list" id="footprint-list" hidden></div>
+
+                        <div class="empty-card" id="footprints-empty">
+                            <div class="empty-icon">👣</div>
+                            <h3>还没有留下足迹</h3>
+                            <p>完成一次偏航后，你去过的咖啡店、书店与公园会在这里汇成一张地点地图。</p>
+                            <a class="ghost-btn primary" href="#/home">去开始第一次偏航</a>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 我的收藏 -->
+                <section class="page" data-page="favorites" hidden>
+                    <div class="page-inner">
+                        <header class="page-head">
+                            <span class="page-kicker">COLLECTION</span>
+                            <h2 class="page-title">我的收藏</h2>
+                            <p class="page-desc">把想再去的街角、书店和咖啡店，收进你的城市碎片。</p>
+                        </header>
+
+                        <div class="collection-grid" id="favorite-grid" hidden></div>
+
+                        <div class="empty-card" id="favorites-empty">
+                            <div class="empty-icon">🔖</div>
+                            <h3>收藏夹还是空的</h3>
+                            <p id="favorites-empty-text">在「偏航推荐」的路线卡片里，点途经点上的 ☆ 就能收藏；也可以一键收藏整条路线的所有途经点。</p>
+                            <a class="ghost-btn" id="favorites-empty-cta" href="#/home">去生成路线</a>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 偏航记录 -->
+                <section class="page" data-page="history" hidden>
+                    <div class="page-inner">
+                        <header class="page-head">
+                            <span class="page-kicker">JOURNAL</span>
+                            <h2 class="page-title">偏航记录</h2>
+                            <p class="page-desc">时间、天气、路线和当时的心情，都值得被记下来。</p>
+                        </header>
+
+                        <p class="history-hint" id="history-hint" hidden>点击任意一条记录，就能在地图上重走那一次的路线。</p>
+
+                        <div class="timeline" id="history-placeholder">
+                            <div class="timeline-row is-placeholder">
+                                <span class="timeline-dot"></span>
+                                <div class="timeline-body">
+                                    <div class="timeline-line w-60"></div>
+                                    <div class="timeline-line w-35"></div>
+                                </div>
+                            </div>
+                            <div class="timeline-row is-placeholder">
+                                <span class="timeline-dot"></span>
+                                <div class="timeline-body">
+                                    <div class="timeline-line w-45"></div>
+                                    <div class="timeline-line w-25"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="timeline detour-timeline" id="history-list" hidden></div>
+
+                        <div class="empty-card" id="history-empty">
+                            <div class="empty-icon">🕘</div>
+                            <h3>还没有偏航记录</h3>
+                            <p>每次生成并选择的路线都会自动记录，之后可以回看路线、补上照片和一句话。</p>
+                            <a class="ghost-btn" href="#/home">去生成路线</a>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 成就 -->
+                <section class="page" data-page="achievements" hidden>
+                    <div class="page-inner">
+                        <header class="page-head">
+                            <span class="page-kicker">ACHIEVEMENTS</span>
+                            <h2 class="page-title">成就</h2>
+                            <p class="page-desc">用一次次小小的偏航，点亮属于你的城市勋章。</p>
+                        </header>
+
+                        <div class="badge-grid">
+                            <div class="badge locked next" data-badge="first"><div class="badge-icon">🧭</div><div class="badge-name">初次偏航</div><span class="badge-sub">登录后点亮</span></div>
+                            <div class="badge locked" data-badge="coffee"><div class="badge-icon">☕</div><div class="badge-name">咖啡漫游者</div><span class="badge-sub">登录后点亮</span></div>
+                            <div class="badge locked" data-badge="rain"><div class="badge-icon">🌧️</div><div class="badge-name">雨中行者</div><span class="badge-sub">登录后点亮</span></div>
+                            <div class="badge locked" data-badge="alleys"><div class="badge-icon">🧩</div><div class="badge-name">巷弄猎人</div><span class="badge-sub">登录后点亮</span></div>
+                            <div class="badge locked" data-badge="night"><div class="badge-icon">🕯️</div><div class="badge-name">夜航者</div><span class="badge-sub">登录后点亮</span></div>
+                            <div class="badge locked" data-badge="city"><div class="badge-icon">🏙️</div><div class="badge-name">城市漫游家</div><span class="badge-sub">登录后点亮</span></div>
+                        </div>
+
+                        <div class="empty-card compact">
+                            <p id="achievement-note">完成第一次偏航即可点亮「初次偏航」。更多徽章会随着你的探索自动解锁。</p>
+                            <a class="ghost-btn" id="achievement-cta" href="#/home">去点亮第一枚</a>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 偏好设置 -->
+                <section class="page" data-page="settings" hidden>
+                    <div class="page-inner">
+                        <header class="page-head">
+                            <span class="page-kicker">PREFERENCES</span>
+                            <h2 class="page-title">偏好设置</h2>
+                            <p class="page-desc">告诉偏航你喜欢怎样走路，下一次推荐会更懂你。</p>
+                        </header>
+
+                        <div class="setting-list">
+                            <div class="setting-row">
+                                <div class="setting-main">
+                                    <span class="setting-name">默认出行方式</span>
+                                    <span class="setting-hint">打开偏好页时自动选中</span>
+                                </div>
+                                <div class="setting-choice" id="setting-mode" role="group" aria-label="默认出行方式">
+                                    <button type="button" data-mode="walk">步行</button>
+                                    <button type="button" data-mode="bike">骑行</button>
+                                    <button type="button" data-mode="ebike">电动车</button>
+                                </div>
+                            </div>
+                            <div class="setting-row">
+                                <div class="setting-main">
+                                    <span class="setting-name">探索节奏</span>
+                                    <span class="setting-hint">影响路线半径与停留密度</span>
+                                </div>
+                                <div class="setting-choice" id="setting-pace" role="group" aria-label="探索节奏">
+                                    <button type="button" data-pace="slow">慢慢逛</button>
+                                    <button type="button" data-pace="steady">适中</button>
+                                    <button type="button" data-pace="far">走远一点</button>
+                                </div>
+                            </div>
+                            <div class="setting-row setting-row-block">
+                                <div class="setting-main">
+                                    <span class="setting-name">兴趣标签</span>
+                                    <span class="setting-hint">推荐时会优先把你带去这些地方，可多选</span>
+                                </div>
+                                <div class="setting-tags" id="setting-interests" role="group" aria-label="兴趣标签">
+                                    <button type="button" data-interest="公园">公园</button>
+                                    <button type="button" data-interest="咖啡店">咖啡店</button>
+                                    <button type="button" data-interest="书店">书店</button>
+                                    <button type="button" data-interest="博物馆">博物馆</button>
+                                    <button type="button" data-interest="广场">广场</button>
+                                    <button type="button" data-interest="景点">景点</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-save">
+                            <div class="setting-save-copy">
+                                <p class="setting-state" id="setting-state">偏好保存在这台设备上。</p>
+                                <p class="setting-error" id="setting-error" role="alert" hidden></p>
+                            </div>
+                            <div class="setting-save-actions">
+                                <button type="button" class="ghost-btn subtle" id="setting-reset-btn">恢复默认</button>
+                                <button type="button" class="ghost-btn primary" id="setting-save-btn">保存偏好</button>
+                            </div>
+                        </div>
+
+                        <div class="setting-sync" id="setting-sync">
+                            <p id="setting-sync-text">登录后，这套偏好会跟着账号走，换设备也能继续用。</p>
+                            <button type="button" class="ghost-btn" id="setting-login-btn">登录以同步</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 个人中心 -->
+                <section class="page" data-page="profile" hidden>
+                    <div class="page-inner">
+                        <header class="page-head">
+                            <span class="page-kicker">PROFILE</span>
+                            <h2 class="page-title">个人中心</h2>
+                            <p class="page-desc">你的偏航档案、探索偏好与城市数据，都将汇聚在这里。</p>
+                        </header>
+
+                        <div class="profile-hero">
+                            <div class="profile-avatar" id="profile-avatar">偏</div>
+                            <div class="profile-hero-meta">
+                                <h3 id="profile-display-name">未登录</h3>
+                                <p id="profile-display-sub">登录后同步足迹、收藏与成就</p>
+                            </div>
+                            <button type="button" class="ghost-btn primary profile-login-btn" id="profile-login-btn">登录 / 注册</button>
+                        </div>
+
+                        <div class="profile-stats" id="profile-stats" hidden>
+                            <div><strong id="stat-detours">0</strong><span>偏航次数</span></div>
+                            <div><strong id="stat-distance">0.0</strong><span>累计公里</span></div>
+                            <div><strong id="stat-favorites">0</strong><span>收藏地点</span></div>
+                            <div><strong id="stat-badges">0</strong><span>点亮勋章</span></div>
+                        </div>
+
+                        <div class="profile-detail" id="profile-detail" hidden>
+                            <p class="profile-bio" id="profile-bio"></p>
+                            <p class="profile-city" id="profile-city"></p>
+                            <div class="profile-actions">
+                                <button type="button" class="ghost-btn" id="profile-edit-btn">编辑资料</button>
+                                <button type="button" class="ghost-btn subtle" id="profile-logout-btn">退出登录</button>
+                            </div>
+                        </div>
+
+                        <div class="profile-prefs" id="profile-prefs">
+                            <div class="profile-prefs-head">
+                                <span class="profile-prefs-title">探索偏好</span>
+                                <a class="profile-prefs-link" href="#/settings">调整 →</a>
+                            </div>
+                            <div class="profile-prefs-body" id="profile-prefs-body"></div>
+                            <p class="profile-prefs-note" id="profile-prefs-note"></p>
+                        </div>
+
+                        <div class="profile-features">
+                            <div class="feature-item">
+                                <span class="feature-icon">01</span>
+                                <div><strong>云端足迹</strong><p>换设备也能找回走过的路线</p></div>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">02</span>
+                                <div><strong>城市收藏</strong><p>把喜欢的地方随身带着</p></div>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">03</span>
+                                <div><strong>个性偏好</strong><p>让 AI 更懂你的行走方式</p></div>
+                            </div>
+                        </div>
+
+                        <p class="profile-guest-note" id="profile-guest-note">不登录也可以继续偏航。登录只是为了让走过的路有个归处。</p>
+                    </div>
+                </section>
+
+                <!-- 关于偏航 -->
+                <section class="page" data-page="about" hidden>
+                    <div class="page-inner">
+                        <header class="page-head">
+                            <span class="page-kicker">ABOUT</span>
+                            <h2 class="page-title">关于偏航</h2>
+                            <p class="page-desc">一款鼓励你偏离最短路径的城市步行探索应用。</p>
+                        </header>
+
+                        <div class="about-card">
+                            <div class="about-logo">偏</div>
+                            <div class="about-meta">
+                                <strong>偏航 · Pianhang</strong>
+                                <span>Version 1.0.0</span>
+                            </div>
+                        </div>
+
+                        <div class="about-section">
+                            <h3>我们在做什么</h3>
+                            <p>综合你的空闲时间、天气、出行方式与兴趣偏好，用大模型生成三条“非最短但值得”的城市路线，带你走进平时容易忽略的街角。</p>
+                        </div>
+
+                        <div class="about-section">
+                            <h3>技术栈</h3>
+                            <div class="tech-tags">
+                                <span>HTML / CSS / JS</span>
+                                <span>Leaflet</span>
+                                <span>FastAPI</span>
+                                <span>OpenStreetMap</span>
+                                <span>OSRM</span>
+                                <span>Open-Meteo</span>
+                                <span>LLM</span>
+                            </div>
+                        </div>
+
+                        <div class="about-section">
+                            <h3>隐私说明</h3>
+                            <p>位置信息仅用于本次路线规划；账号体系只保存用户名、昵称、城市与一句话简介，不收集手机号等敏感信息。</p>
+                        </div>
+
+                        <div class="about-section">
+                            <h3>关于背景</h3>
+                            <p>页面中的城市夜景与空间摄影来自 Unsplash，遵循 Unsplash License 免费使用；路线光轨为程序绘制。</p>
+                        </div>
+
+                        <div class="about-links">
+                            <a href="https://github.com/Royer-Young/pianhang" target="_blank" rel="noopener">GitHub 仓库 ↗</a>
+                            <a href="https://unsplash.com/license" target="_blank" rel="noopener">Unsplash License ↗</a>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- 登录 / 注册 -->
+    <div class="auth-modal" id="auth-modal" hidden>
+        <div class="auth-box" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+            <button type="button" class="auth-close" id="auth-close" aria-label="关闭">×</button>
+            <span class="auth-kicker">PIANHANG ACCOUNT</span>
+            <h3 class="auth-title" id="auth-title">回来，继续绕路</h3>
+            <p class="auth-sub" id="auth-sub">登录后，足迹、收藏与偏好会跟着你。</p>
+            <div class="auth-tabs" role="tablist">
+                <button type="button" class="auth-tab active" data-auth-mode="login" role="tab" aria-selected="true">登录</button>
+                <button type="button" class="auth-tab" data-auth-mode="register" role="tab" aria-selected="false">注册</button>
+            </div>
+            <form class="auth-form" id="auth-form" novalidate>
+                <label class="auth-field">
+                    <span>用户名</span>
+                    <input type="text" id="auth-username" name="username" maxlength="24" autocomplete="username" placeholder="3–24 位中文、字母或数字" required>
+                </label>
+                <label class="auth-field" id="auth-nickname-field" hidden>
+                    <span>昵称 <em>可选</em></span>
+                    <input type="text" id="auth-nickname" name="nickname" maxlength="20" autocomplete="nickname" placeholder="留空就用用户名">
+                </label>
+                <label class="auth-field">
+                    <span>密码</span>
+                    <input type="password" id="auth-password" name="password" maxlength="64" autocomplete="current-password" placeholder="至少 6 位" required>
+                </label>
+                <p class="auth-error" id="auth-error" hidden></p>
+                <button type="submit" class="auth-submit" id="auth-submit">登录</button>
+            </form>
+            <div class="auth-demo" id="auth-demo-box">
+                <span>演示账号</span>
+                <button type="button" id="auth-demo">demo / pianhang · 直接进入</button>
+            </div>
+            <p class="auth-guest">不登录也可以继续偏航，账号只用来同步。</p>
+        </div>
+    </div>
+
+    <!-- 编辑资料 -->
+    <div class="auth-modal" id="edit-modal" hidden>
+        <div class="auth-box" role="dialog" aria-modal="true" aria-labelledby="edit-title">
+            <button type="button" class="auth-close" id="edit-close" aria-label="关闭">×</button>
+            <span class="auth-kicker">YOUR WAY</span>
+            <h3 class="auth-title" id="edit-title">编辑资料</h3>
+            <form class="auth-form" id="edit-form" novalidate>
+                <label class="auth-field">
+                    <span>昵称</span>
+                    <input type="text" id="edit-nickname" maxlength="20" autocomplete="nickname" required>
+                </label>
+                <label class="auth-field">
+                    <span>常驻城市 <em>可选</em></span>
+                    <input type="text" id="edit-city" maxlength="30" placeholder="例：上海">
+                </label>
+                <label class="auth-field">
+                    <span>一句话 <em>可选</em></span>
+                    <input type="text" id="edit-bio" maxlength="80" placeholder="例：喜欢没有目的地的傍晚">
+                </label>
+                <p class="auth-error" id="edit-error" hidden></p>
+                <button type="submit" class="auth-submit" id="edit-submit">保存</button>
+            </form>
+        </div>
+    </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="js/app.js?v=26"></script>
+    <script src="js/prefs.js?v=38"></script>
+    <script src="js/app.js?v=38"></script>
+    <script src="js/shell.js?v=38"></script>
+    <script src="js/auth.js?v=38"></script>
 </body>
 </html>

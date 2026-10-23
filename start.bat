@@ -26,18 +26,48 @@ goto :serve
 echo [1/3] Node.js not found - reusing existing dist\.
 
 :serve
-echo [2/3] Starting service on port 8000 ...
-start "pianhang-service" cmd /k "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8000"
+set "PORT="
+set "SAVED="
 
+rem Reuse the last service if it is still ours, otherwise reuse :8000.
+if exist ".pianhang-port" set /p SAVED=<.pianhang-port
+if defined SAVED (
+    python scripts\server_port.py check %SAVED% >nul 2>nul
+    if not errorlevel 1 set "PORT=%SAVED%"
+)
+if not defined PORT (
+    python scripts\server_port.py check 8000 >nul 2>nul
+    if not errorlevel 1 set "PORT=8000"
+)
+if defined PORT goto :havesvc
+
+rem :8000 may belong to another program (music players often hold it).
+for /f "delims=" %%p in ('python scripts\server_port.py free 8000 8099') do set "PORT=%%p"
+if not defined PORT goto :noport
+if "%PORT%"=="8000" goto :startsvc
+echo [INFO] Port 8000 is busy - using port %PORT% instead.
+
+:startsvc
+echo [2/3] Starting service on port %PORT% ...
+start "pianhang-service" cmd /k "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port %PORT%"
+>".pianhang-port" echo %PORT%
+goto :wait
+
+:havesvc
+>".pianhang-port" echo %PORT%
+echo [2/3] Reusing the running service on port %PORT%.
+
+:wait
 echo [3/3] Waiting for the service ...
-timeout /t 6 /nobreak >nul
-start http://localhost:8000
+python scripts\server_port.py wait %PORT% 35
+if errorlevel 1 goto :openfail
+start "" "http://localhost:%PORT%"
 
 echo.
 echo ============================================
 echo  Pianhang is running.
-echo    Local   :  http://localhost:8000
-echo    LAN     :  http://YOUR-IP:8000   (find IP with: ipconfig)
+echo    Local   :  http://localhost:%PORT%
+echo    LAN     :  http://YOUR-IP:%PORT%   (find IP with: ipconfig)
 echo    Public  :  run  go-online.bat
 echo  Keep the "pianhang-service" window open.
 echo  Close it to stop the server.
@@ -53,5 +83,17 @@ exit /b 1
 
 :buildfail
 echo [ERROR] Frontend build failed.
+pause
+exit /b 1
+
+:noport
+echo [ERROR] No free port found between 8000 and 8099.
+pause
+exit /b 1
+
+:openfail
+echo [ERROR] The service did not answer on port %PORT%.
+echo         Check the "pianhang-service" window for the error,
+echo         then run this script again.
 pause
 exit /b 1

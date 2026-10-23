@@ -1,0 +1,475 @@
+/* ==========================================================================
+   账号与个人中心
+   与 shell.css 共用深色半透明表面；不引入新的图标或高饱和色。
+   ========================================================================== */
+
+/* ---------- 个人中心 ---------- */
+.profile-hero {
+    flex-wrap: wrap;
+}
+
+.profile-hero-meta {
+    flex: 1 1 180px;
+}
+
+.profile-hero-meta h3,
+.profile-hero-meta p {
+    overflow-wrap: anywhere;
+}
+
+.profile-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.profile-login-btn {
+    flex: none;
+    margin-left: auto;
+    margin-top: 0;
+}
+
+.profile-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.profile-stats > div {
+    padding: 15px 8px 13px;
+    text-align: center;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(6, 11, 21, 0.56);
+}
+
+.profile-stats strong {
+    display: block;
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+
+.profile-stats span {
+    display: block;
+    margin-top: 5px;
+    color: var(--text-muted);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+}
+
+.profile-detail {
+    margin-top: 14px;
+    padding: 18px 20px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(6, 11, 21, 0.56);
+}
+
+.profile-bio {
+    font-size: 14px;
+    line-height: 1.75;
+    color: var(--text);
+    word-break: break-word;
+}
+
+.profile-bio.muted {
+    color: var(--text-muted);
+}
+
+.profile-city {
+    margin-top: 7px;
+    color: var(--accent);
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
+}
+
+.profile-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.profile-actions .ghost-btn {
+    margin-top: 0;
+    padding: 9px 16px;
+    font-size: 12.5px;
+}
+
+.ghost-btn.subtle {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: transparent;
+    color: var(--text-muted);
+}
+
+.profile-guest-note {
+    margin-top: 16px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.7;
+    text-align: center;
+}
+
+.profile-prefs {
+    margin-top: 14px;
+    padding: 16px 18px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background-color: rgba(6, 11, 21, 0.56);
+}
+
+.profile-prefs-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.profile-prefs-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.profile-prefs-link {
+    color: var(--accent);
+    font-size: 12px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.profile-prefs-link:hover {
+    text-decoration: underline;
+}
+
+.profile-prefs-body {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.profile-pref-chip {
+    padding: 5px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--text);
+    font-size: 11.5px;
+    letter-spacing: 0.02em;
+}
+
+.profile-pref-chip.is-interest {
+    border-color: rgba(245, 158, 11, 0.26);
+    background: rgba(245, 158, 11, 0.07);
+    color: var(--accent);
+}
+
+.profile-prefs-note {
+    margin-top: 10px;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    line-height: 1.65;
+}
+
+/* 用编号替代表情符号，保持与侧边栏一致的克制感 */
+.feature-icon {
+    border-radius: 50%;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    background: rgba(245, 158, 11, 0.06);
+    color: var(--accent);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 登录 / 编辑资料弹层 ---------- */
+.auth-modal {
+    position: fixed;
+    inset: 0;
+    height: 100vh;
+    height: 100dvh;
+    z-index: 2600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(3, 7, 15, 0.72);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    animation: authFadeIn 0.22s ease;
+}
+
+.auth-box {
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+    max-height: calc(100vh - 40px);
+    max-height: calc(100dvh - 40px);
+    overflow-y: auto;
+    padding: 28px 28px 22px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(11, 18, 32, 0.98), rgba(6, 11, 21, 0.98));
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+    animation: authRise 0.28s var(--ease-out);
+}
+
+.auth-box::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 28px;
+    width: 36px;
+    height: 1px;
+    background: var(--accent);
+}
+
+.auth-close {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.2s ease, background 0.2s ease;
+}
+
+.auth-close:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.auth-kicker {
+    display: block;
+    margin-bottom: 12px;
+    color: rgba(245, 158, 11, 0.82);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.26em;
+}
+
+.auth-title {
+    color: var(--text);
+    font-size: 23px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+.auth-sub {
+    margin-top: 7px;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.65;
+}
+
+.auth-tabs {
+    display: flex;
+    gap: 24px;
+    margin-top: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.auth-tab {
+    position: relative;
+    padding: 0 0 10px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.auth-tab:hover,
+.auth-tab.active {
+    color: var(--text);
+}
+
+.auth-tab.active::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 1px;
+    background: var(--accent);
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 18px;
+}
+
+.auth-field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.auth-field > span {
+    color: var(--text-muted);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+}
+
+.auth-field em {
+    font-style: normal;
+    opacity: 0.65;
+}
+
+.auth-field input {
+    width: 100%;
+    padding: 11px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    border-radius: 6px;
+    outline: none;
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.auth-field input:focus {
+    border-color: rgba(245, 158, 11, 0.6);
+    background: rgba(245, 158, 11, 0.05);
+}
+
+.auth-field input::placeholder {
+    color: rgba(148, 163, 184, 0.55);
+}
+
+.auth-error {
+    margin: 0;
+    color: #fca5a5;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.auth-submit {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #fbbf24, #f59e0b);
+    color: #1f2937;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: filter 0.2s ease, opacity 0.2s ease;
+}
+
+.auth-submit:hover:not(:disabled) {
+    filter: brightness(1.06);
+}
+
+.auth-submit:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.auth-demo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 12px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    color: var(--text-muted);
+    font-size: 11.5px;
+}
+
+.auth-demo button {
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 11.5px;
+    cursor: pointer;
+}
+
+.auth-demo button:hover {
+    text-decoration: underline;
+}
+
+.auth-guest {
+    margin-top: 14px;
+    color: rgba(148, 163, 184, 0.7);
+    font-size: 11px;
+    line-height: 1.6;
+    text-align: center;
+}
+
+body.auth-open {
+    overflow: hidden;
+}
+
+@keyframes authFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes authRise {
+    from { opacity: 0; transform: translateY(10px) scale(0.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 900px) {
+    html.auth-open {
+        overflow: hidden;
+    }
+
+    .auth-modal {
+        align-items: flex-end;
+        padding: 12px;
+        padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+
+    .auth-box {
+        max-width: none;
+        max-height: calc(100vh - 24px);
+        max-height: calc(100dvh - 24px);
+        padding: 24px 20px 18px;
+        border-radius: 14px;
+    }
+
+    .auth-box::before {
+        left: 20px;
+    }
+
+    .profile-login-btn {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .profile-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .auth-modal,
+    .auth-box {
+        animation: none;
+    }
+}
