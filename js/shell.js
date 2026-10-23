@@ -16,7 +16,7 @@
         footprints:   { title: '我的足迹', veil: '正在翻开你的足迹…' },
         favorites:    { title: '我的收藏', veil: '正在整理你的城市碎片…' },
         history:      { title: '偏航记录', veil: '正在回放每一次出发…' },
-        achievements: { title: '成就',     veil: '正在点亮你的徽章…' },
+        achievements: { title: '我的成就', veil: '正在点亮你的徽章…' },
         settings:     { title: '偏好设置', veil: '正在读取你的偏好…' },
         profile:      { title: '个人中心', veil: '正在打开你的偏航档案…' },
         about:        { title: '关于偏航', veil: '正在加载关于偏航…' }
