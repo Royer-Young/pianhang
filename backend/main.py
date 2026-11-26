@@ -10,6 +10,7 @@ import http.client
 import json
 import math
 import os
+import random
 import re
 import secrets
 import socket
@@ -25,6 +26,9 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from pydantic import BaseModel
+from slowapi import Limiter as SlowLimiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 # 加载 backend/.env（密钥仅在此处配置，不下发前端）
 _env_path = Path(__file__).parent / ".env"
@@ -33,25 +37,46 @@ load_dotenv(_env_path)
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.openai-next.com/v1")
 LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-v4-flash")
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").lower()
+IS_PRODUCTION = ENVIRONMENT in ("production", "prod")
 
 MOCK_MODE = not LLM_API_KEY  # 未配置密钥时启用模拟模式
 
-# 统一超时：key 失效或中转服务卡顿时快速回退到内置模板，避免前端长时间等待
-if not MOCK_MODE:
-    llm_client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL, timeout=20.0)
+# 生产环境默认值
+_COOKIE_SECURE_DEFAULT = "1" if IS_PRODUCTION else "0"
+_DEMO_DEFAULT = "0" if IS_PRODUCTION else "1"
 
-app = FastAPI(title="偏航后端", version="0.2.0")
+# 懒加载 OpenAI 客户端：避免 httpx 版本冲突导致导入阶段崩掉。
+# 真实调用时才初始化（_get_llm_client），mock 模式下完全不碰它。
+_llm_client = None
 
-# 跨域：允许前端域名访问（从环境变量读取，逗号分隔；默认本地开发地址）
-CORS_ORIGINS = os.environ.get(
-    "CORS_ORIGINS",
-    "http://localhost:8000,http://127.0.0.1:8000,http://localhost:8124,http://127.0.0.1:8124",
-).split(",")
+def _get_llm_client():
+    global _llm_client
+    if _llm_client is None and not MOCK_MODE:
+        _llm_client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL, timeout=20.0)
+    return _llm_client
+
+app = FastAPI(title="偏航后端", version="0.3.0")
+
+# 限流：内存存储，按请求来源 IP 限流（反向代理下仍可用，因为 slowapi 默认走 get_remote_address）
+limiter = SlowLimiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# 跨域：允许前端域名访问（从环境变量读取，逗号分隔；生产环境默认收紧为空列表，由平台代理统一处理）
+if IS_PRODUCTION:
+    cors_raw = os.environ.get("CORS_ORIGINS", "")
+    CORS_ORIGINS = [o.strip() for o in cors_raw.split(",") if o.strip()] if cors_raw else []
+else:
+    CORS_ORIGINS = os.environ.get(
+        "CORS_ORIGINS",
+        "http://localhost:8000,http://127.0.0.1:8000,http://localhost:8124,http://127.0.0.1:8124",
+    ).split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "PUT", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
 
@@ -99,7 +124,7 @@ def extract_json(raw: str) -> dict:
         raise
 
 
-def call_llm(system_prompt: str, user_prompt: str, json_mode: bool = True) -> str:
+def call_llm(system_prompt: str, user_prompt: str, json_mode: bool = True, temperature: float = 0.7) -> str:
     """统一大模型调用，返回文本或JSON字符串。
 
     注意：openai-next 等中转服务对部分模型不支持 response_format=json_object，
@@ -113,9 +138,9 @@ def call_llm(system_prompt: str, user_prompt: str, json_mode: bool = True) -> st
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "temperature": 0.7,
+        "temperature": temperature,
     }
-    resp = llm_client.chat.completions.create(**kwargs)
+    resp = _get_llm_client().chat.completions.create(**kwargs)
     return resp.choices[0].message.content
 
 
@@ -180,20 +205,54 @@ def ai_get_reason(pois: List[PoiItem], weather: str, minutes: int) -> dict:
         }
 
 
+# 每个地点随机抽一个写作角度，避免所有停留点都是同一套话术
+INTRO_ANGLES = [
+    "从名字能听出的气质",
+    "在这里适合做的一件小事",
+    "它和旁边街道、社区的关系",
+    "适合在什么时段路过",
+    "一个人走进去时的感觉",
+    "门外先看到、听到的细节",
+]
+
+
+def intro_fallback(name: str, ptype: str) -> str:
+    """大模型不可用时的兜底文案：按地点名散列选句式，避免完全雷同"""
+    name = name or "这里"
+    p = ptype or "地点"
+    templates = [
+        f"拐进巷口就是{name}，一处{p}，走进去的那几步路比门口更安静。",
+        f"{name}是那种路过才发现、专门找反而找不到的{p}，适合顺路拐一下。",
+        f"如果时间还宽裕，可以绕到{name}看一眼——一处没什么人排队的{p}。",
+        f"{name}这一带的生活气比招牌更明显，{p}门口常常站着两三个本地人。",
+        f"走到{name}时脚步会慢下来，{p}本身不大，但足够撑起一次停留。",
+        f"{name}藏在街区中间，作为一处{p}，它更像是个路标，而不是目的地。",
+    ]
+    idx = sum(ord(c) for c in name) % len(templates)
+    return templates[idx]
+
+
 def ai_get_intro(name: str, ptype: str) -> dict:
-    """生成地点简短介绍"""
+    """生成地点简短介绍（每个地点换角度、换句式，避免套话）"""
+    angle = random.choice(INTRO_ANGLES)
     system_prompt = (
-        "你是偏航App的地点介绍助手。根据地点名称和类型，生成一段简短的介绍文字（50字以内）。"
-        "只描述地点本身的氛围和适合偏航的理由，不要编造历史、评分、创始人等无法从名称推断的事实。"
+        "你在为一个城市漫游App写地点卡片文案。读者正在步行途中，只看一眼就要决定要不要拐进去。\n"
+        "写作要求：\n"
+        "1. 只写一句话，40~60字，口语、具体、有画面感。\n"
+        "2. 必须出现地点名，并让它读起来像这个地方本身。\n"
+        "3. 禁止使用这些套话：适合稍作停留、慢慢感受、放慢脚步、留意周围细节、值得一去、氛围感、小众宝藏、城市角落。\n"
+        "4. 不同地点必须用不同的开头和句式，不要每段都从地点名开始。\n"
+        "5. 不要编造历史、评分、店龄、创始人、招牌产品等无法从名称推断的事实。\n"
+        "6. 只输出这一句话，不要引号、不要解释、不要换行。"
     )
-    user_prompt = f"地点名称：{name}，类型：{ptype or '地点'}。请生成介绍。"
+    user_prompt = f"地点：{name}\n类型：{ptype or '地点'}\n这次请侧重：{angle}"
     try:
-        text = call_llm(system_prompt, user_prompt, json_mode=False)
+        text = call_llm(system_prompt, user_prompt, json_mode=False, temperature=0.95)
         return {"text": text.strip()}
     except Exception as e:
         err_msg = str(e)
-        print(f"[WARN] LLM生成介绍失败，使用模板: {err_msg}")
-        return {"text": f"{name}是一处{ptype or '地点'}，适合在偏航途中稍作停留、慢慢感受周边氛围。", "llm_error": err_msg}
+        print(f"[WARN] LLM生成介绍失败，使用兜底文案: {err_msg}")
+        return {"text": intro_fallback(name, ptype), "llm_error": err_msg}
 
 
 # ---------- 模拟模式实现（未配置密钥时回退） ----------
@@ -259,34 +318,31 @@ def mock_get_reason(pois: List[PoiItem], weather: str, minutes: int) -> dict:
 
 
 def mock_get_intro(name: str, ptype: str) -> dict:
-    """模拟：生成地点简短介绍"""
-    templates = [
-        f"{name}是一处{ptype or '地点'}，适合在偏航途中稍作停留、慢慢感受周边氛围。",
-        f"这里是{name}（{ptype or '地点'}），漫步至此不妨放慢脚步、留意周围细节。",
-        f"{name}，属于{ptype or '地点'}类别，是这次偏航探索的一处停靠点。",
-    ]
-    idx = hash((name, ptype)) % len(templates)
-    return {"text": templates[idx]}
+    """模拟：生成地点简短介绍（按地点散列选句式，避免雷同）"""
+    return {"text": intro_fallback(name, ptype)}
 
 
 # ---------- 路由 ----------
 
 @app.post("/api/parse_pref")
-def parse_pref(req: ParsePrefRequest):
+@limiter.limit("10/minute")
+def parse_pref(request: Request, req: ParsePrefRequest):
     if MOCK_MODE:
         return mock_parse_pref(req.user_text, req.minutes)
     return ai_parse_pref(req.user_text, req.minutes)
 
 
 @app.post("/api/get_reason")
-def get_reason(req: GetReasonRequest):
+@limiter.limit("10/minute")
+def get_reason(request: Request, req: GetReasonRequest):
     if MOCK_MODE:
         return mock_get_reason(req.pois, req.weather, req.minutes)
     return ai_get_reason(req.pois, req.weather, req.minutes)
 
 
 @app.post("/api/get_intro")
-def get_intro(req: GetIntroRequest):
+@limiter.limit("10/minute")
+def get_intro(request: Request, req: GetIntroRequest):
     if MOCK_MODE:
         return mock_get_intro(req.name, req.type)
     return ai_get_intro(req.name, req.type)
@@ -318,17 +374,38 @@ def root():
 
 
 @app.get("/api/ip")
-def ip_locate():
-    """IP 定位代理：由后端请求 ip-api.com，前端无需处理 CORS/混合内容。"""
+@limiter.limit("30/minute")
+def ip_locate(request: Request):
+    """IP 定位代理：优先使用真实客户端 IP（从代理头或 request.client），
+    失败时回退公开 ip-api.com。部署在反向代理后时，确保代理传递了 X-Forwarded-For。"""
     import urllib.request
     import urllib.error
-    url = "http://ip-api.com/json/?lang=zh-CN&fields=status,lat,lon,city"
+
+    # 真实客户端 IP 处理（支持七牛云等反向代理）
+    client_ip = None
+    xf_for = request.headers.get("x-forwarded-for")
+    if xf_for:
+        client_ip = xf_for.split(",")[0].strip()
+    if not client_ip:
+        xf_real = request.headers.get("x-real-ip")
+        if xf_real:
+            client_ip = xf_real.strip()
+    if not client_ip and request.client:
+        client_ip = request.client.host
+
+    # 尝试用后端 ip-api.com 走客户端 IP（需要后端能访问 ip-api）；失败用通用兜底
+    if client_ip:
+        url = f"http://ip-api.com/json/{client_ip}?lang=zh-CN&fields=status,lat,lon,city"
+    else:
+        url = "http://ip-api.com/json/?lang=zh-CN&fields=status,lat,lon,city"
+
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "pianhang/1.0"})
         with urllib.request.urlopen(req, timeout=6) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if data.get("status") == "success":
-                return {"lat": data.get("lat"), "lon": data.get("lon"), "city": data.get("city", "")}
+                return {"lat": data.get("lat"), "lon": data.get("lon"), "city": data.get("city", ""),
+                        "ip_source": "x-forwarded-for" if xf_for else ("x-real-ip" if request.headers.get("x-real-ip") else ("request.client" if client_ip else "generic"))}
     except Exception as e:
         return {"error": str(e)}
     return {"error": "定位失败"}
@@ -447,7 +524,8 @@ def _fetch_amap_regeo(lat: float, lng: float) -> dict:
 
 
 @app.get("/api/amap/regeo")
-async def amap_regeo(lat: float, lng: float):
+@limiter.limit("30/minute")
+async def amap_regeo(request: Request, lat: float, lng: float):
     """逆地理编码，输入为 GCJ-02（高德坐标系），返回附近道路、路口与地标描述。"""
     if not (-90 <= lat <= 90 and -180 <= lng <= 180):
         raise HTTPException(status_code=400, detail="坐标超出范围")
@@ -489,7 +567,8 @@ DB_PATH = Path(os.environ.get("PIANHANG_DB", str(Path(__file__).resolve().parent
 SESSION_COOKIE = "ph_session"
 SESSION_DAYS = 30
 PBKDF2_ITERATIONS = 240_000
-COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "0").lower() in ("1", "true", "yes")
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE", _COOKIE_SECURE_DEFAULT).lower() in ("1", "true", "yes")
+ENABLE_DEMO_ACCOUNT = os.environ.get("ENABLE_DEMO_ACCOUNT", _DEMO_DEFAULT).lower() in ("1", "true", "yes")
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_一-龥]{3,24}$")
 
 # 偏好设置：与前端 js/prefs.js 的白名单保持一致
@@ -631,21 +710,22 @@ def init_db() -> None:
         ):
             if name not in fav_cols:
                 conn.execute(f"ALTER TABLE favorites ADD COLUMN {name} {ddl}")
-        # 演示账号：方便评审直接体验个人中心
-        demo = conn.execute("SELECT id FROM users WHERE username = ?", ("demo",)).fetchone()
-        if demo is None:
-            conn.execute(
-                "INSERT INTO users (username, nickname, password_hash, city, bio, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (
-                    "demo",
-                    "偏航演示",
-                    hash_password("pianhang"),
-                    "上海",
-                    "喜欢没有目的地的傍晚。",
-                    datetime.now(timezone.utc).isoformat(),
-                ),
-            )
+        # 演示账号：方便本地评审体验；生产环境默认关闭（由 ENABLE_DEMO_ACCOUNT 控制）
+        if ENABLE_DEMO_ACCOUNT:
+            demo = conn.execute("SELECT id FROM users WHERE username = ?", ("demo",)).fetchone()
+            if demo is None:
+                conn.execute(
+                    "INSERT INTO users (username, nickname, password_hash, city, bio, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        "demo",
+                        "偏航演示",
+                        hash_password("pianhang"),
+                        "上海",
+                        "喜欢没有目的地的傍晚。",
+                        datetime.now(timezone.utc).isoformat(),
+                    ),
+                )
 
 
 def _hash_token(token: str) -> str:
@@ -868,7 +948,8 @@ def auth_me(request: Request):
 
 
 @app.post("/api/auth/register")
-def auth_register(req: RegisterRequest, response: Response):
+@limiter.limit("5/minute")
+def auth_register(request: Request, req: RegisterRequest, response: Response):
     username = req.username.strip()
     _validate_credentials(username, req.password)
     nickname = _clean_text(req.nickname, 20, username)
@@ -889,7 +970,8 @@ def auth_register(req: RegisterRequest, response: Response):
 
 
 @app.post("/api/auth/login")
-def auth_login(req: LoginRequest, response: Response):
+@limiter.limit("5/minute")
+def auth_login(request: Request, req: LoginRequest, response: Response):
     username = req.username.strip()
     with closing(_db()) as conn:
         row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
@@ -1154,6 +1236,65 @@ def delete_favorite(favorite_id: int, request: Request):
         )
         favorites = _favorite_list(conn, row["id"])
     return {"ok": True, "favorites": favorites, "stats": _user_stats(row["id"])}
+
+
+@app.delete("/api/detours/{detour_id}")
+def delete_detour(detour_id: int, request: Request):
+    """删除一条偏航记录；仅记录创建者可删。"""
+    row = session_user(request)
+    if row is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    with closing(_db()) as conn, conn:
+        cur = conn.execute(
+            "DELETE FROM detours WHERE id = ? AND user_id = ?", (detour_id, row["id"])
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="这条偏航记录不存在")
+        conn.commit()
+    with closing(_db()) as conn:
+        detours = conn.execute(
+            "SELECT * FROM detours WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 20",
+            (row["id"],),
+        ).fetchall()
+    return {
+        "ok": True,
+        "detours": [_detour_payload(item) for item in detours],
+        "stats": _user_stats(row["id"]),
+    }
+
+
+@app.delete("/api/auth/me")
+def delete_account(request: Request, response: Response):
+    """永久删除当前登录账号及其全部关联数据（偏航、收藏、会话）。"""
+    row = session_user(request)
+    if row is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    with closing(_db()) as conn, conn:
+        conn.execute("DELETE FROM favorites WHERE user_id = ?", (row["id"],))
+        conn.execute("DELETE FROM detours WHERE user_id = ?", (row["id"],))
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
+        conn.execute("DELETE FROM users WHERE id = ?", (row["id"],))
+    response.delete_cookie(
+        SESSION_COOKIE, path="/", httponly=True, samesite="lax", secure=COOKIE_SECURE
+    )
+    return {"ok": True}
+
+
+@app.get("/api/healthz")
+def healthz():
+    """轻量健康检查：用于平台探针。"""
+    try:
+        with closing(_db()) as conn:
+            conn.execute("SELECT 1")
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return {
+        "ok": db_ok,
+        "version": app.version,
+        "mode": "Mock" if MOCK_MODE else f"Real({LLM_MODEL})",
+        "environment": ENVIRONMENT,
+    }
 
 
 init_db()

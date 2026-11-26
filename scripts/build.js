@@ -32,9 +32,10 @@ fs.mkdirSync(distDir, { recursive: true });
 
 let html = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf-8');
 const apiScript = `<script>window.__API_BASE__='${API_BASE}';</script>`;
+// 自托管 Leaflet：apiScript 插到 leaflet.js 之后
 html = html.replace(
-  '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>',
-  '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>\n    ' + apiScript
+  '<script src="assets/vendor/leaflet/leaflet.js"></script>',
+  '<script src="assets/vendor/leaflet/leaflet.js"></script>\n    ' + apiScript
 );
 fs.writeFileSync(path.join(distDir, 'index.html'), html);
 

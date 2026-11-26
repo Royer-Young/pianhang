@@ -439,7 +439,7 @@
 
 .dest-options {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 10px;
     width: 100%;
 }
@@ -449,9 +449,9 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 7px;
-    min-height: 168px;
-    padding: 18px 18px 16px;
+    gap: 6px;
+    min-height: 158px;
+    padding: 16px 14px 14px;
     border: 1px solid rgba(255, 255, 255, 0.11);
     border-radius: 16px;
     background: linear-gradient(158deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012));
@@ -490,15 +490,16 @@
 }
 
 .dest-btn strong {
-    font-size: 17px;
+    font-size: 15px;
     font-weight: 700;
-    letter-spacing: 0.015em;
+    letter-spacing: 0.01em;
+    line-height: 1.4;
 }
 
 .dest-btn small {
     color: rgba(182, 194, 211, 0.72);
-    font-size: 11px;
-    line-height: 1.7;
+    font-size: 10.5px;
+    line-height: 1.65;
 }
 
 .dest-arrow {
@@ -961,27 +962,23 @@
     text-align: center;
 }
 
-.routes-loading-line {
+.routes-progress {
     position: relative;
-    width: 150px;
-    height: 1px;
-    overflow: hidden;
+    width: min(280px, 82%);
+    height: 3px;
+    border-radius: 999px;
     background: rgba(255, 255, 255, 0.09);
+    overflow: hidden;
 }
 
-.routes-loading-line::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 55px;
-    background: linear-gradient(90deg, transparent, var(--accent), transparent);
-    animation: loadingSweep 1.7s ease-in-out infinite;
-}
-
-@keyframes loadingSweep {
-    from { left: -55px; }
-    to { left: 150px; }
+.routes-progress-fill {
+    display: block;
+    width: 0;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #fbbf24, #f59e0b);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.55);
+    transition: width 0.45s cubic-bezier(0.3, 0.7, 0.4, 1);
 }
 
 .routes-loading-title {
@@ -1768,16 +1765,16 @@ body.nav-mode .now-strip {
     }
 
     .dest-btn {
-        min-height: 146px;
-        padding: 16px 14px 14px;
+        min-height: 132px;
+        padding: 13px 11px 12px;
     }
 
     .dest-btn strong {
-        font-size: 15px;
+        font-size: 13.5px;
     }
 
     .dest-btn small {
-        font-size: 10px;
+        font-size: 9.5px;
     }
 
     .pref-sheet {
@@ -1858,21 +1855,25 @@ body.nav-mode .now-strip {
     }
 
     .dest-options {
-        grid-template-columns: 1fr;
+        gap: 7px;
     }
 
     .dest-btn {
-        min-height: 112px;
+        min-height: 124px;
+        padding: 11px 9px 10px;
+    }
+
+    .dest-btn strong {
+        font-size: 12.5px;
     }
 
     .dest-btn small {
-        max-width: 86%;
+        font-size: 9px;
+        max-width: 100%;
     }
 
     .dest-arrow {
-        position: absolute;
-        right: 16px;
-        bottom: 16px;
+        display: none;
     }
 
     .place-map-btn {
@@ -1883,9 +1884,12 @@ body.nav-mode .now-strip {
 @media (prefers-reduced-motion: reduce) {
     .now-live,
     .pick-empty-dot,
-    .routes-loading-line::after,
     .view.view-enter {
         animation: none !important;
+    }
+
+    .routes-progress-fill {
+        transition: none;
     }
 
     .time-option,

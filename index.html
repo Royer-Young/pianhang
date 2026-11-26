@@ -6,10 +6,10 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <title>偏航</title>
     <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/shell.css?v=38">
-    <link rel="stylesheet" href="css/auth.css?v=38">
-    <link rel="stylesheet" href="css/home.css?v=38">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="css/shell.css?v=40">
+    <link rel="stylesheet" href="css/auth.css?v=40">
+    <link rel="stylesheet" href="css/home.css?v=40">
+    <link rel="stylesheet" href="assets/vendor/leaflet/leaflet.css">
 </head>
 <body class="booting">
 
@@ -294,7 +294,7 @@
                             </div>
                         </div>
 
-                        <!-- 目的地问询屏：有/没有目的地 -->
+                        <!-- 目的地问询屏：有/没有目的地 + 无目的地时的返程策略 -->
                         <section class="view view-dest" id="view-dest" hidden>
                             <div class="view-intro">
                                 <span class="view-kicker">02 / 目的地</span>
@@ -308,9 +308,15 @@
                                     <small>设定起终点，在途中多拐几个弯</small>
                                     <span class="dest-arrow" aria-hidden="true">→</span>
                                 </button>
-                                <button type="button" id="dest-no" class="dest-btn">
+                                <button type="button" id="dest-roundtrip" class="dest-btn">
                                     <span class="dest-index">B</span>
-                                    <strong>没有目的地</strong>
+                                    <strong>没有目的地 · 回到起点</strong>
+                                    <small>从当前位置出发，逛一圈后自然回到起点</small>
+                                    <span class="dest-arrow" aria-hidden="true">→</span>
+                                </button>
+                                <button type="button" id="dest-wander" class="dest-btn">
+                                    <span class="dest-index">C</span>
+                                    <strong>没有目的地 · 走到哪算哪</strong>
                                     <small>只给一段时间，让城市决定路线</small>
                                     <span class="dest-arrow" aria-hidden="true">→</span>
                                 </button>
@@ -846,10 +852,10 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="js/prefs.js?v=38"></script>
-    <script src="js/app.js?v=38"></script>
-    <script src="js/shell.js?v=38"></script>
-    <script src="js/auth.js?v=38"></script>
+    <script src="assets/vendor/leaflet/leaflet.js"></script>
+    <script src="js/prefs.js?v=40"></script>
+    <script src="js/app.js?v=40"></script>
+    <script src="js/shell.js?v=40"></script>
+    <script src="js/auth.js?v=40"></script>
 </body>
 </html>

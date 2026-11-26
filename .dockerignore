@@ -1,0 +1,30 @@
+# Git / IDE
+.git
+.github
+.idea
+.vscode
+.trae
+.DS_Store
+
+# 构建产物
+dist/
+node_modules/
+
+# 后端运行数据（必须排除，防止把 sqlite 和 .env 打进镜像）
+backend/.env
+backend/.env.local
+backend/pianhang.db
+backend/*.db.bak
+backend/__pycache__/
+*.pyc
+*.pyo
+*.db
+
+# 日志和工具
+*.log
+.tools/
+.temp/
+
+# 本地临时文件
+.pianhang-port
+.gitignore.bak
