@@ -109,6 +109,7 @@
         return PACE_CONFIG[prefPace] || PACE_CONFIG.steady;
     }
     var hasDestination = false;          // 是否有目的地
+    var returnToStart = false;           // 无目的地模式下是否回到起点（true=回起点; false=走到哪算哪）
     var startCoords = null;              // 起点坐标 {lat,lng}
     var endCoords = null;                // 终点坐标 {lat,lng}
     var startPlace = null;               // 起点地点信息 {name,address,lat,lng,kind}
@@ -122,7 +123,8 @@
     var viewDest = document.getElementById('view-dest');
     var viewPref = document.getElementById('view-pref');
     var destYes = document.getElementById('dest-yes');
-    var destNo = document.getElementById('dest-no');
+    var destRoundtrip = document.getElementById('dest-roundtrip');
+    var destWander = document.getElementById('dest-wander');
 
     // 开始偏航 → 显示"是否有目的地"问询屏
     function showDestQuestion() {
@@ -132,8 +134,9 @@
     }
 
     // 进入偏航偏好界面：隐藏问询屏、显示偏好视图，有目的地时显示起终点
-    function enterPrefView(hasDest) {
+    function enterPrefView(hasDest, returnRoundtrip) {
         hasDestination = !!hasDest;
+        returnToStart = !hasDest && !!returnRoundtrip;
         if (viewDest) viewDest.hidden = true;
         if (viewPref) { viewPref.hidden = false; revealView(viewPref); }
         var routeBlock = document.getElementById('route-block');
@@ -155,6 +158,7 @@
         if (vr) { vr.hidden = false; revealView(vr); }
         setFlowStep(0);
         if (rb) rb.innerHTML = renderRoutesLoading();
+        startRoutesProgress();
         loadCandidates();
     }
 
@@ -217,21 +221,54 @@
         return tryNext();
     }
 
-    // 静默定位：仅用IP定位作为地图初始中心/无目的地兜底起点，不展示任何定位UI
+    // 静默定位：GPS 精确优先 → IP 粗定位兜底 → 地图中心
+    // 返回 Promise<{lat, lng, source}>，resolve 位置或 null
     function locateUser(callback) {
-        var p = ipLocate().then(function (ip) {
+        var tasks = [];
+        var resolved = false;
+        var userLocationPromise;
+
+        // GPS 精确定位（6s 超时，超时后不阻止 IP 兜底）
+        if (navigator.geolocation) {
+            userLocationPromise = new Promise(function (resolve) {
+                var done = function (result, source) {
+                    if (!resolved) {
+                        resolved = true;
+                        if (result) {
+                            applyUserLocation(result.lat, result.lng, source, result.accuracy || null, result.city || '');
+                        } else {
+                            if (map) map.setView([31.2304, 121.4737], 13);
+                            refreshAmbientWeather(31.2304, 121.4737, '当前位置');
+                        }
+                        resolve(result ? { lat: result.lat, lng: result.lng, source: source } : null);
+                    }
+                };
+                var onSuccess = function (pos) {
+                    done({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }, 'GPS');
+                };
+                var onError = function () { done(null, 'gps-error'); };
+                navigator.geolocation.getCurrentPosition(onSuccess, onError, { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 });
+                setTimeout(function () { done(null, 'gps-timeout'); }, 6500);
+            });
+            tasks.push(userLocationPromise);
+        }
+
+        // IP 定位（4s 超时，作为兜底）
+        var ipPromise = ipLocate().then(function (ip) {
             if (ip) {
                 applyUserLocation(ip.lat, ip.lng, 'IP', null, ip.city);
-            } else {
+            } else if (!resolved) {
                 if (map) map.setView([31.2304, 121.4737], 13);
-                // 定位失败时仍给首页一个可用的天气上下文
-                var c = map ? gcj02ToWgs84(map.getCenter().lat, map.getCenter().lng) : { lat: 31.2304, lng: 121.4737 };
-                refreshAmbientWeather(c.lat, c.lng, '当前位置');
+                refreshAmbientWeather(31.2304, 121.4737, '当前位置');
             }
-            return ip ? { lat: ip.lat, lng: ip.lng } : null;
+            return ip ? { lat: ip.lat, lng: ip.lng, source: 'IP' } : null;
         });
-        if (callback) p.then(callback);
-        return p;
+        tasks.push(ipPromise);
+
+        // 取第一个成功的（GPS 优先，因为先发起；IP 会在 GPS 超时后兜底）
+        var race = Promise.race(tasks);
+        if (callback) race.then(callback);
+        return race;
     }
 
     // 等待定位完成（最多 ms 毫秒）：默认起点要在生成路线前就绪
@@ -712,17 +749,30 @@
     });
 
     // 绑定地点弹窗：点击Marker时调用后端获取简短介绍(loading→更新)
+    var introCache = {};
+    function introHtml(text) {
+        return '<div style="color:#334155;font-size:11px;margin-top:4px;line-height:1.55">' + escapeHtml(text) + '</div>';
+    }
     function bindIntroPopup(marker, displayName, p) {
         var base = '<div style="font-size:14px;line-height:1.5">' +
             '<b style="color:#0f172a">' + escapeHtml(displayName) + '</b><br>' +
             '<span style="color:#64748b">' + escapeHtml(p.type || '地点') + '</span>' +
             popupFavButtonHtml(p) + '</div>';
-        marker.bindPopup(base + '<div style="color:#64748b;font-size:11px;margin-top:4px">加载介绍…</div>');
+        var cacheKey = (p.name || displayName || '') + '|' + (p.type || '');
+        if (introCache[cacheKey]) {
+            marker.bindPopup(base + introHtml(introCache[cacheKey]));
+        } else {
+            marker.bindPopup(base + '<div style="color:#64748b;font-size:11px;margin-top:4px">正在生成介绍…</div>');
+        }
         marker.on('click', function () {
+            if (introCache[cacheKey]) {
+                marker.setPopupContent(base + introHtml(introCache[cacheKey]));
+                return;
+            }
             aiPost('/api/get_intro', { name: p.name, type: p.type }).then(function (r) {
                 var intro = (r && r.text) ? r.text : '暂无介绍';
-                marker.setPopupContent(base +
-                    '<div style="color:#334155;font-size:11px;margin-top:4px;line-height:1.5">' + escapeHtml(intro) + '</div>');
+                introCache[cacheKey] = intro;
+                marker.setPopupContent(base + introHtml(intro));
             }).catch(function () {
                 marker.setPopupContent(base);
             });
@@ -1018,11 +1068,52 @@
         }
     }
 
+    // 路线加载进度：真实阶段推进 + 慢速爬行，避免等待时进度条停住
+    var routesProgressTimer = null;
+    var routesProgressValue = 0;
+
+    function routesProgressEls() {
+        return {
+            wrap: document.querySelector('.routes-progress'),
+            fill: document.getElementById('routes-progress-fill'),
+            sub: document.getElementById('routes-loading-sub')
+        };
+    }
+
+    function setRoutesProgress(pct, text) {
+        var els = routesProgressEls();
+        if (!els.fill) return;
+        routesProgressValue = Math.max(routesProgressValue, Math.min(100, Math.round(pct)));
+        els.fill.style.width = routesProgressValue + '%';
+        if (els.wrap) els.wrap.setAttribute('aria-valuenow', String(routesProgressValue));
+        if (text && els.sub) els.sub.textContent = text;
+    }
+
+    function startRoutesProgress() {
+        routesProgressValue = 0;
+        setRoutesProgress(6, '正在解析你的偏好，读取此刻天气…');
+        if (routesProgressTimer) clearInterval(routesProgressTimer);
+        routesProgressTimer = setInterval(function () {
+            if (routesProgressValue >= 90) return;
+            setRoutesProgress(routesProgressValue + (routesProgressValue < 50 ? 2.2 : 0.9));
+        }, 600);
+    }
+
+    function finishRoutesProgress() {
+        if (routesProgressTimer) { clearInterval(routesProgressTimer); routesProgressTimer = null; }
+        setRoutesProgress(100, '三条岔路准备好了');
+    }
+
+    function stopRoutesProgress() {
+        if (routesProgressTimer) { clearInterval(routesProgressTimer); routesProgressTimer = null; }
+    }
+
     function renderRoutesLoading() {
         return '<div class="routes-loading">' +
-            '<span class="routes-loading-line" aria-hidden="true"></span>' +
+            '<div class="routes-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">' +
+            '<span class="routes-progress-fill" id="routes-progress-fill"></span></div>' +
             '<p class="routes-loading-title">正在寻找可以偏航的路口</p>' +
-            '<p class="routes-loading-sub">读取此刻天气、筛选附近停留点、为三条路线留出岔路。</p>' +
+            '<p class="routes-loading-sub" id="routes-loading-sub">正在解析你的偏好，读取此刻天气…</p>' +
             '</div>';
     }
 
@@ -1854,7 +1945,7 @@
 
         // 1. 先解析偏好(若有自由文本)，用于影响打分；后端不可用时回退默认
         aiPost('/api/parse_pref', { user_text: prefText(), minutes: selectedMinutes })
-            .then(function (pref) { lastPref = pref; console.log('偏好解析: ' + JSON.stringify(pref)); })
+            .then(function (pref) { lastPref = pref; console.log('偏好解析: ' + JSON.stringify(pref)); setRoutesProgress(24, '正在读取此刻的天气…'); })
             .catch(function (err) { console.warn('偏好解析失败，使用默认: ' + err.message); lastPref = null; })
             .then(function () {
                 // 2. 天气：失败时退化为默认天气，不阻断路线生成
@@ -1870,17 +1961,23 @@
                 ambientWeatherLabel = startPlace ? shortArea(startPlace) : (userCity || '当前位置');
                 renderAmbientWeather(weather.error ? 'error' : undefined);
                 console.log('当前天气: ' + weather.text + ' 场景:' + weather.precip + (weather.extreme ? ('/' + weather.extreme) : ''));
+                setRoutesProgress(40, '正在筛选附近可以停留的地方…');
                 // 3. POI
                 return fetchPOIsP(center.lat, center.lng, radius);
             }).then(function (pois) {
                 console.log('已加载 ' + pois.length + ' 个POI');
                 drawMarkers(pois);
+                setRoutesProgress(55, '正在为三条路线留出岔路…');
                 var wText = currentWeather ? currentWeather.text : '未知';
                 var placePrefs = buildPlacePreferences(selectedPlaceTypes);
                 var sp = startCoords || userLocation || center;
-                var ep = hasDestination ? endCoords : null;
-                // 距离预算：超出 1.35 倍的候选换一组途经点重试，避免 30 分钟生成 4 公里的路线
-                var maxDistance = mc.speed * selectedMinutes *
+                // 终点：有目的地用用户选择的终点；回起点模式用起点作为终点；走到哪算哪则无终点
+                var ep = hasDestination ? endCoords : (returnToStart ? sp : null);
+                // 距离预算：留出 15% 返程缓冲（回起点模式）+ 途经点停留时间按 3min/站 扣除
+                var stayBufferMin = Math.min((pc.stops || 3) * 3, selectedMinutes * 0.3);
+                var effectiveMinutes = Math.max(1, selectedMinutes - stayBufferMin);
+                if (returnToStart) effectiveMinutes = effectiveMinutes * 0.85;
+                var maxDistance = mc.speed * effectiveMinutes *
                     (currentWeather && currentWeather.extreme ? WEATHER_DIST_FACTOR : 1) * pc.budgetMul * 1.35;
                 var accepted = [], rejected = [], attempts = 3;
                 usedWaypointSets = {};
@@ -1889,6 +1986,25 @@
                     return c && c.waypoints
                         ? c.waypoints.map(function (p) { return p.name; }).sort().join('>')
                         : '';
+                }
+                // 两条路线的几何重叠度（0~1）：比较途经点和起点终点的集合重合比例
+                function routeOverlap(a, b) {
+                    if (!a || !b) return 1;
+                    var pointsA = new Set();
+                    var pointsB = new Set();
+                    [].concat(a.startPoint ? [a.startPoint] : [], a.waypoints || [], a.endPoint ? [a.endPoint] : []).forEach(function (p) {
+                        if (p && p.lat && p.lng) pointsA.add(Math.round(p.lat * 1000) + ',' + Math.round(p.lng * 1000));
+                    });
+                    [].concat(b.startPoint ? [b.startPoint] : [], b.waypoints || [], b.endPoint ? [b.endPoint] : []).forEach(function (p) {
+                        if (p && p.lat && p.lng) pointsB.add(Math.round(p.lat * 1000) + ',' + Math.round(p.lng * 1000));
+                    });
+                    var common = 0;
+                    pointsA.forEach(function (k) { if (pointsB.has(k)) common++; });
+                    var union = pointsA.size + pointsB.size - common;
+                    return union === 0 ? 1 : common / union;
+                }
+                function tooSimilar(c) {
+                    return accepted.some(function (a) { return routeOverlap(a, c) > 0.7; });
                 }
 
                 function nextCandidate() {
@@ -1905,12 +2021,16 @@
                             if (c && !c.tooLong && !c.error) {
                                 var key = candidateKey(c);
                                 if (acceptedKeys[key]) return;
+                                // 跳过和已接受路线几何重叠度太高的候选，确保三条路线真正有差异
+                                if (tooSimilar(c)) { rejected.push(c); return; }
                                 acceptedKeys[key] = true;
                                 accepted.push(c);
                             } else {
                                 rejected.push(c);
                             }
                         });
+                        setRoutesProgress(55 + Math.min(accepted.length, 3) * 11,
+                            '正在为第 ' + Math.min(accepted.length + 1, 3) + ' 条路线寻找更少人走的岔路…');
                         if (accepted.length >= 3 || attempts >= 9) return accepted;
                         // 连续两批都没有新路线，说明附近可选组合已经用尽，别再空转
                         noProgress = accepted.length === before ? (noProgress || 0) + 1 : 0;
@@ -1957,8 +2077,10 @@
                     return (a.distance || Infinity) - (b.distance || Infinity);
                 });
                 lastCandidates = candidates;
+                finishRoutesProgress();
                 showRoutesModal({ candidates: lastCandidates, pref: lastPref, weather: currentWeather, minutes: selectedMinutes, mode: mc.label, backendMode: backendMode });
             }).catch(function (err) {
+                stopRoutesProgress();
                 console.error('生成候选路线失败', err);
                 var raw = (err && err.message) ? err.message : '未知错误';
                 var friendly = /(HTTP 5\d\d|abort|network|fetch)/i.test(raw)
@@ -1966,7 +2088,6 @@
                 var rb = document.getElementById('routes-body');
                 if (rb) {
                     rb.innerHTML = '<div class="routes-loading">' +
-                        '<span class="routes-loading-line" aria-hidden="true"></span>' +
                         '<p class="routes-loading-title">这次没有找到合适的岔路</p>' +
                         '<p class="routes-loading-sub">' + escapeHtml(friendly) + '</p>' +
                         '<div class="routes-error-actions">' +
@@ -1976,7 +2097,12 @@
                         '</div>';
                 }
                 var retry = document.getElementById('retry-btn');
-                if (retry) retry.addEventListener('click', function () { loadCandidates(); });
+                if (retry) retry.addEventListener('click', function () {
+                    var body = document.getElementById('routes-body');
+                    if (body) body.innerHTML = renderRoutesLoading();
+                    startRoutesProgress();
+                    loadCandidates();
+                });
                 var back = document.getElementById('back-btn');
                 if (back) back.addEventListener('click', closeRoutesView);
             }).then(function () {
@@ -2027,9 +2153,33 @@
     }
 
     // 弹窗：3条候选路线，每条含理由 + 地点箭头串联 + 选择按钮
+    // ----- 路线卡片辅助：差异标签 -----
+    function routeDiffBadge(c, i, all) {
+        var wps = c.waypoints || [];
+        var types = {};
+        wps.forEach(function (p) { if (p && p.type) types[p.type] = (types[p.type] || 0) + 1; });
+        // 找本路线最独有的类型（其他候选没有的）
+        var uniqueType = null;
+        var others = all.filter(function (_, j) { return j !== i; });
+        for (var t in types) {
+            var found = false;
+            others.forEach(function (o) {
+                (o.waypoints || []).forEach(function (p) { if (p && p.type === t) found = true; });
+            });
+            if (!found) { uniqueType = t; break; }
+        }
+        if (uniqueType) return uniqueType + ' 多';
+        // 比其他候选少站
+        var avg = others.length ? others.reduce(function (s, o) { return s + (o.waypoints || []).length; }, 0) / others.length : 0;
+        if (wps.length < avg - 1) return '站少路短';
+        if (wps.length > avg + 1) return '站多逛得久';
+        return '';
+    }
+
     function showRoutesModal(data) {
         var body = document.getElementById('routes-body');
         if (!body) return;
+        stopRoutesProgress();
         var pref = data.pref || {};
         var modeLabel = (data.mode || '步行');
         var wText = data.weather ? weatherShort(data.weather) : '天气读取中';
@@ -2073,15 +2223,22 @@
         var canFav = !!(window.PianhangAuth && window.PianhangAuth.isLoggedIn && window.PianhangAuth.isLoggedIn());
         (data.candidates || []).forEach(function (c, i) {
             var distStr = c.distance ? ((c.distance / 1000).toFixed(2) + ' km') : '';
-            var meta = (c.waypoints ? c.waypoints.length : 0) + ' 站' + (distStr ? (' · ' + distStr) : '');
-            html += '<article class="route-card">';
-            html += '<div class="route-head"><div class="route-title-wrap">' +
+            var mc = MODE_CONFIG[selectedMode] || MODE_CONFIG.walk;
+            var wpCount = (c.waypoints || []).length;
+            var travelMin = mc.speed > 0 && c.distance ? Math.round(c.distance / mc.speed) : '';
+            var stayMin = wpCount * 3;
+            var totalMin = travelMin ? (travelMin + stayMin) + ' 分钟（走 ' + travelMin + ' + 逛 ' + stayMin + '）' : '';
+            // 差异标签：优先展示途经点类型差异
+            var diffBadge = routeDiffBadge(c, i, data.candidates);
+            html += '<article class="route-card">' +
+                '<div class="route-head"><div class="route-title-wrap">' +
                 '<span class="route-index">0' + (i + 1) + '</span>' +
-                '<span class="route-name">路线 ' + (CN_ROUTE[i] || (i + 1)) + '</span>' +
-                '</div><span class="route-meta">' + meta + '</span></div>';
+                '<span class="route-name">路线 ' + (CN_ROUTE[i] || (i + 1)) + '</span></div>' +
+                (diffBadge ? '<span class="route-diff">' + diffBadge + '</span>' : '') +
+                '<span class="route-meta">' + wpCount + ' 站' + (distStr ? (' · ' + distStr) : '') +
+                (totalMin ? (' · 约 ' + totalMin) : '') + '</span></div>';
             html += '<p class="route-reason">' + escapeHtml(c.reason || '').replace(/\n/g, '<br>') + '</p>';
             html += '<div class="route-stops">' + routeStopsHtml(c, i) + '</div>';
-            var wpCount = (c.waypoints || []).length;
             if (wpCount) {
                 html += '<div class="route-fav-row">' +
                     '<button type="button" class="route-fav-all" data-card="' + i + '">' +
@@ -2264,7 +2421,7 @@
     function selectRoute(i) {
         var c = lastCandidates && lastCandidates[i];
         if (!c) return;
-        recordDetour(c);
+        // 不立即记录——等用户点击"结束偏航"并确认后才写入手足迹
         var vr = document.getElementById('view-routes');
         if (vr) vr.hidden = true;
         if (viewExplore) { viewExplore.hidden = false; revealView(viewExplore); }
@@ -2371,7 +2528,11 @@
     }
 
     // 导航界面：切换为全屏沉浸式导航，隐藏POI标记，显示导航浮层
+    // 选中路线引用——结束偏航时才记录完成
+    var currentNavRoute = null;
+
     function enterNav(c) {
+        currentNavRoute = c;
         document.body.classList.add('nav-mode');
         if (prefSection) prefSection.hidden = true;
         // 导航时只显示路线，隐藏所有POI标记，界面更清爽
@@ -2395,10 +2556,16 @@
             '<button type="button" id="nav-end" class="nav-end">结束偏航</button>';
         bar.hidden = false;
         var endBtn = document.getElementById('nav-end');
-        if (endBtn) endBtn.addEventListener('click', exitNav);
+        if (endBtn) endBtn.addEventListener('click', function () {
+            if (window.confirm('确认完成这次偏航吗？\n\n点击"确定"后，这条路线将写入你的足迹。')) {
+                if (currentNavRoute) recordDetour(currentNavRoute);
+                exitNav();
+            }
+        });
     }
 
     function exitNav() {
+        currentNavRoute = null;
         document.body.classList.remove('nav-mode');
         var bar = document.getElementById('nav-bar');
         if (bar) bar.hidden = true;
@@ -2921,8 +3088,9 @@
     }
 
     startBtn.addEventListener('click', showDestQuestion);
-    if (destYes) destYes.addEventListener('click', function () { enterPrefView(true); });
-    if (destNo) destNo.addEventListener('click', function () { enterPrefView(false); });
+    if (destYes) destYes.addEventListener('click', function () { enterPrefView(true, false); });
+    if (destRoundtrip) destRoundtrip.addEventListener('click', function () { enterPrefView(false, true); });
+    if (destWander) destWander.addEventListener('click', function () { enterPrefView(false, false); });
 
     // 推荐视图返回按钮 → 回到偏好视图
     var routesCloseBtn = document.getElementById('routes-close');

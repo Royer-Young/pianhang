@@ -418,6 +418,21 @@ body {
 .route-reason { margin: 0; font-size: 14px; line-height: 1.55; color: var(--text); }
 .route-path { font-size: 13px; color: var(--text); line-height: 1.6; }
 .route-arrow { color: var(--accent); margin: 0 4px; font-weight: 700; }
+
+/* 路线卡片：迷你缩略图 + 差异标签 */
+.route-diff {
+    display: inline-block;
+    padding: 1px 8px;
+    margin-left: 8px;
+    font-size: 11px;
+    line-height: 16px;
+    color: #f7f5f0;
+    background: var(--accent, #d4a63a);
+    border-radius: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    vertical-align: middle;
+}
 .route-select {
     align-self: flex-start;
     padding: 8px 16px;
